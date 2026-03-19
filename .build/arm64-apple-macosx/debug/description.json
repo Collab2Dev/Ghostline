@@ -1,0 +1,241 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.GhostlineDesktop-arm64-apple-macosx26.0-debug.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/sources",
+      "importPath" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/wr/github/Ghostline/Sources/GhostlineDesktop/main.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "GhostlineDesktop",
+      "moduleOutputPath" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/Modules/GhostlineDesktop.swiftmodule",
+      "objects" : [
+        "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/main.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx13.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j12",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "GhostlineDesktop_main",
+        "-color-diagnostics",
+        "-swift-version",
+        "6",
+        "-I",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-L",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-plugin-path",
+        "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "ghostline"
+      ],
+      "outputFileMapPath" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/main.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/Modules/GhostlineDesktop.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/wr/github/Ghostline/Sources/GhostlineDesktop/main.swift"
+      ],
+      "tempsPath" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "GhostlineDesktop" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "GhostlineDesktop",
+      "-package-name",
+      "ghostline",
+      "-c",
+      "/Users/wr/github/Ghostline/Sources/GhostlineDesktop/main.swift",
+      "-I",
+      "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx13.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j12",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "GhostlineDesktop_main",
+      "-color-diagnostics",
+      "-swift-version",
+      "6",
+      "-I",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-L",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-plugin-path",
+      "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "ghostline",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "GhostlineDesktop" : [
+
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop-entitlement.plist" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<entitlement-plist>"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<com.apple.security.get-task-allow>"
+        }
+      ],
+      "outputFilePath" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop-entitlement.plist"
+    },
+    "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/wr/github/Ghostline/Sources/GhostlineDesktop/main.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/sources"
+    },
+    "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/main.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.product/Objects.LinkFileList"
+    },
+    "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+    }
+  }
+}

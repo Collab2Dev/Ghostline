@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/master.swiftdeps"
+  },
+  "/Users/wr/github/Ghostline/Sources/GhostlineDesktop/main.swift": {
+    "dependencies": "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/main.d",
+    "object": "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/main.swift.o",
+    "swiftmodule": "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/main.swiftdeps",
+    "diagnostics": "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/main.dia"
+  }
+}

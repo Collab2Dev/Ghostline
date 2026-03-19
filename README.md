@@ -7,22 +7,55 @@ Put the caret inside a sentence, press `Tab`, and the app will:
 1. Improve that one sentence.
 2. Bridge the improved sentence into a humanizer pass.
 3. Replace the original sentence directly in the editor.
+4. Let you copy a Codex-ready handoff prompt with the current draft, focus sentence, and latest rewrite.
 
 The UI is styled like a glossy macOS Tahoe-era glass window with a fake `Wi-Fi Off` control tile.
 
 ## Run it
 
-Make sure Node 18+ is installed, then start the app with your OpenAI API key in the environment:
+Make sure Node 18+ is installed, open a terminal in the project folder, sign in to Codex once, then start the app:
 
 ```bash
-export OPENAI_API_KEY="your_key_here"
+cd /Users/wr/github/Ghostline
+/Applications/Codex.app/Contents/Resources/codex login
 npm start
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
+If you already have an OpenAI API key configured, Ghostline can still fall back to it when the local Codex path is unavailable.
+
 ## Notes
 
-- Default model: `gpt-5-mini`
-- Override it with `OPENAI_MODEL`
+- Default backend: local Codex CLI using your Codex or ChatGPT login
+- Override the Codex model with `CODEX_MODEL`
+- If you rely on API fallback, Ghostline also respects `OPENAI_API_KEY` and `OPENAI_MODEL`
 - No extra dependencies are required
+- The Codex bridge is local-only and does not make an extra API call
+
+## Background App
+
+If you want Ghostline to live on your Mac like a lightweight Grammarly-style helper, there is now a local menu bar app:
+
+```bash
+cd /Users/wr/github/Ghostline
+swift run GhostlineDesktop
+```
+
+On first launch:
+
+1. Open the Ghostline menu bar item.
+2. Click `Request Accessibility Access`.
+3. Approve Ghostline in macOS System Settings so it can read and replace text in the focused field.
+
+After that:
+
+1. Place your caret inside a sentence in any editable macOS text field that exposes Accessibility text APIs.
+2. Press `Control` + `Option` + `G`, or click `Rewrite Current Sentence` from the menu bar.
+3. Ghostline rewrites that sentence locally through the Codex CLI and writes it back into the focused field.
+
+Current limitations:
+
+- This is a native macOS prototype, not a packaged `.app` bundle yet.
+- Some apps block Accessibility-based text replacement, so behavior will vary by editor.
+- The helper detects focused editable fields and rewrites on demand; it does not yet auto-rewrite as you type.

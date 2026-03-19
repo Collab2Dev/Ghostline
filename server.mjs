@@ -1,13 +1,21 @@
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "public");
+const codexSchemaPath = path.join(__dirname, "codex-rewrite.schema.json");
+const bundledCodexBinary = "/Applications/Codex.app/Contents/Resources/codex";
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "127.0.0.1";
+const codexBinary =
+  process.env.CODEX_BIN || (existsSync(bundledCodexBinary) ? bundledCodexBinary : "codex");
+const codexModel = process.env.CODEX_MODEL || process.env.OPENAI_MODEL || "";
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -62,30 +70,52 @@ async function handleRewrite(request, response) {
     return;
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    respondJson(response, 500, {
-      error: "OPENAI_API_KEY is missing. Add it to your shell before starting Ghostline."
-    });
-    return;
-  }
+  try {
+    const rewrite = await rewriteSentence(sentence);
 
-  const improvedText = await createResponse({
+    respondJson(response, 200, {
+      improvedText: rewrite.improvedText,
+      finalText: rewrite.finalText
+    });
+  } catch (error) {
+    console.error(error);
+    respondJson(response, 500, {
+      error: error instanceof Error ? error.message : "Rewrite failed."
+    });
+  }
+}
+
+async function rewriteSentence(sentence) {
+  try {
+    return await rewriteWithCodex(sentence);
+  } catch (error) {
+    if (process.env.OPENAI_API_KEY) {
+      console.warn("Codex rewrite failed, falling back to the OpenAI API.", error);
+      return rewriteWithOpenAI(sentence);
+    }
+
+    throw error;
+  }
+}
+
+async function rewriteWithOpenAI(sentence) {
+  const improvedText = await createOpenAIResponse({
     instructions: improveInstructions,
     input: sentence
   });
 
-  const finalText = await createResponse({
+  const finalText = await createOpenAIResponse({
     instructions: humanizeInstructions,
     input: `Original sentence:\n${sentence}\n\nImproved sentence:\n${improvedText}`
   });
 
-  respondJson(response, 200, {
+  return {
     improvedText,
     finalText
-  });
+  };
 }
 
-async function createResponse({ instructions, input }) {
+async function createOpenAIResponse({ instructions, input }) {
   const model = process.env.OPENAI_MODEL || "gpt-5-mini";
 
   const apiResponse = await fetch("https://api.openai.com/v1/responses", {
@@ -114,6 +144,128 @@ async function createResponse({ instructions, input }) {
   }
 
   return cleanSentence(extractOutputText(payload));
+}
+
+async function rewriteWithCodex(sentence) {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "ghostline-codex-"));
+  const outputPath = path.join(tempDir, "rewrite.json");
+  const args = [
+    "exec",
+    "--skip-git-repo-check",
+    "--sandbox",
+    "read-only",
+    "--ephemeral",
+    "--color",
+    "never",
+    "--output-schema",
+    codexSchemaPath,
+    "--output-last-message",
+    outputPath
+  ];
+
+  if (codexModel) {
+    args.push("--model", codexModel);
+  }
+
+  args.push("-");
+
+  try {
+    await runCodexExec({
+      args,
+      prompt: buildCodexPrompt(sentence)
+    });
+
+    const payload = JSON.parse(await readFile(outputPath, "utf8"));
+
+    if (
+      typeof payload?.improvedText !== "string" ||
+      typeof payload?.finalText !== "string"
+    ) {
+      throw new Error("Codex returned an invalid rewrite payload.");
+    }
+
+    return {
+      improvedText: cleanSentence(payload.improvedText),
+      finalText: cleanSentence(payload.finalText)
+    };
+  } catch (error) {
+    throw new Error(formatCodexError(error));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+function buildCodexPrompt(sentence) {
+  return [
+    "You are Ghostline, a silent writing assistant.",
+    "Return strict JSON that matches the provided schema.",
+    "Do not use tools, commands, or file access.",
+    "",
+    "Produce two fields:",
+    "1. improvedText: Rewrite the sentence so it reads cleaner, sharper, and more polished without changing the meaning, point of view, tone, or sentence count.",
+    "2. finalText: Starting from improvedText, make it sound more natural, warm, and human while keeping the original meaning intact. Avoid cliches, corporate filler, em dashes, and obviously AI-sounding phrasing.",
+    "",
+    "Both fields must be exactly one sentence.",
+    `Sentence: ${sentence}`
+  ].join("\n");
+}
+
+function runCodexExec({ args, prompt }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(codexBinary, args, {
+      cwd: __dirname,
+      env: {
+        ...process.env,
+        NO_COLOR: "1"
+      },
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    child.on("error", reject);
+
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      const error = new Error(
+        `Codex exited with code ${code || 1}.\n${[stdout, stderr].filter(Boolean).join("\n")}`
+      );
+
+      reject(error);
+    });
+
+    child.stdin.end(prompt);
+  });
+}
+
+function formatCodexError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (/enoent|not found/i.test(message)) {
+    return "Codex CLI is not installed. Install Codex or set CODEX_BIN before starting Ghostline.";
+  }
+
+  if (/codex login|sign in|authentication/i.test(message)) {
+    return "Codex is not signed in. Run `codex login` first, then restart Ghostline.";
+  }
+
+  if (/lookup address information|websocket|network/i.test(message)) {
+    return "Codex could not reach its service. Check your internet connection and try again.";
+  }
+
+  return "Codex rewrite failed. Make sure the Codex CLI is installed and logged in, then try again.";
 }
 
 function extractOutputText(payload) {

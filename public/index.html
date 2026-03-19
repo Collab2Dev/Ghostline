@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ghostline</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="aurora aurora-one"></div>
+    <div class="aurora aurora-two"></div>
+    <div class="noise"></div>
+
+    <main class="app-shell">
+      <section class="window">
+        <header class="window-bar">
+          <div class="traffic-lights" aria-hidden="true">
+            <span class="light close"></span>
+            <span class="light minimize"></span>
+            <span class="light expand"></span>
+          </div>
+
+          <div class="window-copy">
+            <p class="eyebrow">Ghostline</p>
+            <p class="window-label">Silent sentence rewrite</p>
+          </div>
+
+          <div class="wifi-pill" id="wifiPill" aria-hidden="true">
+            <span class="wifi-pill-icon">
+              <svg viewBox="0 0 24 24" role="presentation">
+                <path
+                  d="M2.8 8.6A15.4 15.4 0 0 1 12 5.5c2.3 0 4.6.5 6.7 1.5M5.7 12.5a10.2 10.2 0 0 1 12.6.1M8.9 16.1a5.5 5.5 0 0 1 6.1.1M12 19.3h.1"
+                />
+                <path d="M3 3l18 18" />
+              </svg>
+            </span>
+            <span>Wi-Fi Off</span>
+          </div>
+        </header>
+
+        <div class="workspace">
+          <section class="editor-panel">
+            <div class="panel-copy">
+              <p class="eyebrow">Invisible Tab Flow</p>
+              <h1>Press Tab and let the sentence rewrite itself.</h1>
+              <p class="lede">
+                Put your caret inside any sentence. Ghostline improves it,
+                routes it through a humanizer pass, and replaces the original
+                line directly with no popup, highlight, or correction bubble.
+              </p>
+            </div>
+
+            <div class="editor-frame">
+              <div
+                id="editor"
+                class="editor"
+                contenteditable="true"
+                spellcheck="false"
+                autocapitalize="sentences"
+                data-placeholder="Drop in a rough paragraph, place the caret inside a sentence, and press Tab."
+              >I think this launch plan is promising, but the paragraph still sounds too stiff. Put your cursor in a sentence and tap Tab to make it cleaner and more human. Nothing flashes or pops up when the rewrite lands.</div>
+            </div>
+
+            <p class="hint">
+              Tab rewrites the sentence under the caret. The replacement happens
+              in place and keeps the rest of your draft untouched.
+            </p>
+
+            <div id="srStatus" class="sr-only" aria-live="polite"></div>
+          </section>
+
+          <aside class="control-panel">
+            <section class="wifi-tile" id="wifiTile" aria-hidden="true">
+              <div class="tile-top">
+                <div class="wifi-orb">
+                  <svg viewBox="0 0 24 24" role="presentation">
+                    <path
+                      d="M2.8 8.6A15.4 15.4 0 0 1 12 5.5c2.3 0 4.6.5 6.7 1.5M5.7 12.5a10.2 10.2 0 0 1 12.6.1M8.9 16.1a5.5 5.5 0 0 1 6.1.1M12 19.3h.1"
+                    />
+                    <path d="M3 3l18 18" />
+                  </svg>
+                </div>
+
+                <div class="tile-copy">
+                  <p class="tile-label">Network</p>
+                  <p class="tile-title">Wi-Fi Off</p>
+                </div>
+              </div>
+
+              <div class="signal-bars">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+
+              <p class="tile-meta">Tahoe glass. Offline theater. Quiet rewrite.</p>
+            </section>
+
+            <section class="process-card">
+              <p class="eyebrow">Sentence Bridge</p>
+              <div class="process-step">
+                <span>01</span>
+                <p>Improve the sentence without changing what you meant.</p>
+              </div>
+              <div class="process-step">
+                <span>02</span>
+                <p>Bridge the result into the humanizer and smooth the voice.</p>
+              </div>
+              <div class="process-step">
+                <span>03</span>
+                <p>Replace the original sentence directly, with no visual noise.</p>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

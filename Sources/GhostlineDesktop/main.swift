@@ -14,20 +14,25 @@ app.run()
 final class GhostlineDesktopApp: NSObject, NSApplicationDelegate {
   private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
   private let statusLine = NSMenuItem(title: "Starting Ghostline Desktop...", action: nil, keyEquivalent: "")
+  private let openEditorMenuItem = NSMenuItem(
+    title: "Open Editor",
+    action: #selector(openGhostlineDemo),
+    keyEquivalent: "o"
+  )
   private let rewriteMenuItem = NSMenuItem(
     title: "Rewrite Current Sentence",
     action: #selector(rewriteCurrentSentence),
-    keyEquivalent: "r"
+    keyEquivalent: "g"
+  )
+  private let settingsMenuItem = NSMenuItem(
+    title: "Settings",
+    action: #selector(openSettings),
+    keyEquivalent: ","
   )
   private let accessMenuItem = NSMenuItem(
     title: "Request Accessibility Access",
     action: #selector(requestAccessibilityAccess),
     keyEquivalent: "a"
-  )
-  private let openDemoMenuItem = NSMenuItem(
-    title: "Open Ghostline Demo",
-    action: #selector(openGhostlineDemo),
-    keyEquivalent: "o"
   )
   private let quitMenuItem = NSMenuItem(title: "Quit Ghostline Desktop", action: #selector(quit), keyEquivalent: "q")
 
@@ -37,37 +42,85 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate {
   private var pollTimer: Timer?
   private var isBusy = false
   private var hotKeyController: HotKeyController?
+  private var serverProcess: Process?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     configureMenu()
     registerHotKey()
     startPolling()
+    startNodeServer()
     refreshFocusedContext()
+    
+    // Open editor on first launch
+    let hasLaunchedBefore = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
+    if !hasLaunchedBefore {
+      openGhostlineDemo()
+      UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+    }
   }
 
   func applicationWillTerminate(_ notification: Notification) {
     pollTimer?.invalidate()
+    serverProcess?.terminate()
   }
 
   private func configureMenu() {
     if let button = statusItem.button {
-      button.title = "Ghostline"
+      button.image = NSImage(systemSymbolName: "pencil.and.sparkles", accessibilityDescription: "Ghostline")
+      button.image?.isTemplate = true
     }
 
+    openEditorMenuItem.target = self
     rewriteMenuItem.target = self
+    rewriteMenuItem.keyEquivalentModifierMask = [.control, .option]
+    settingsMenuItem.target = self
     accessMenuItem.target = self
-    openDemoMenuItem.target = self
     quitMenuItem.target = self
 
     let menu = NSMenu()
     menu.addItem(statusLine)
     menu.addItem(.separator())
+    menu.addItem(openEditorMenuItem)
     menu.addItem(rewriteMenuItem)
+    menu.addItem(settingsMenuItem)
     menu.addItem(accessMenuItem)
-    menu.addItem(openDemoMenuItem)
     menu.addItem(.separator())
     menu.addItem(quitMenuItem)
     statusItem.menu = menu
+  }
+
+  private func startNodeServer() {
+    guard let serverPath = Bundle.main.path(forResource: "server", ofType: "mjs") else {
+      statusLine.title = "Could not find server.mjs in bundle."
+      return
+    }
+    
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = ["node", serverPath]
+    
+    // Point to bundled public folder
+    if let publicPath = Bundle.main.path(forResource: "public", ofType: nil) {
+        process.environment = ProcessInfo.processInfo.environment
+        process.environment?["PUBLIC_DIR"] = publicPath
+    }
+    
+    do {
+      try process.run()
+      self.serverProcess = process
+    } catch {
+      statusLine.title = "Failed to start Node server: \(error.localizedDescription)"
+    }
+  }
+
+  @objc private func openSettings() {
+    // For now, since it's a web-based UI, open settings in the web view
+    guard let url = URL(string: "http://127.0.0.1:3000") else {
+      return
+    }
+    NSWorkspace.shared.open(url)
+    // We can't easily trigger the gear icon from here without more complex communication,
+    // so we'll just open the main UI which has the gear icon.
   }
 
   private func registerHotKey() {

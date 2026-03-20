@@ -99,11 +99,20 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate {
     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
     process.arguments = ["node", serverPath]
     
+    var env = ProcessInfo.processInfo.environment
+    
+    // Ensure Node can be found when launched from Finder
+    let currentPath = env["PATH"] ?? ""
+    let commonPaths = ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"]
+    let newPath = (commonPaths + [currentPath]).joined(separator: ":")
+    env["PATH"] = newPath
+    
     // Point to bundled public folder
     if let publicPath = Bundle.main.path(forResource: "public", ofType: nil) {
-        process.environment = ProcessInfo.processInfo.environment
-        process.environment?["PUBLIC_DIR"] = publicPath
+      env["PUBLIC_DIR"] = publicPath
     }
+    
+    process.environment = env
     
     do {
       try process.run()

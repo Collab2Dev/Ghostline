@@ -6,6 +6,8 @@
     <string>Ghostline</string>
     <key>CFBundleIdentifier</key>
     <string>dev.collab.ghostline</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon.icns</string>
     <key>CFBundleExecutable</key>
     <string>GhostlineDesktop</string>
     <key>CFBundleVersion</key>

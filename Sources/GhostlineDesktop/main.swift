@@ -9,7 +9,7 @@ private let app = NSApplication.shared
 private let delegate = GhostlineDesktopApp()
 
 app.delegate = delegate
-app.setActivationPolicy(.accessory)
+app.setActivationPolicy(.regular)
 app.run()
 
 @MainActor
@@ -48,17 +48,25 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
     registerHotKey()
     startPolling()
     refreshFocusedContext()
-    
-    // Open editor on first launch
-    let hasLaunchedBefore = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
-    if !hasLaunchedBefore {
-      openEditor()
-      UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-    }
+    openEditor()
   }
 
   func applicationWillTerminate(_ notification: Notification) {
     pollTimer?.invalidate()
+  }
+
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    if !flag {
+      openEditor()
+    } else {
+      window?.makeKeyAndOrderFront(nil)
+      NSApp.activate(ignoringOtherApps: true)
+    }
+    return true
+  }
+
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+    false
   }
 
   private func configureMenu() {

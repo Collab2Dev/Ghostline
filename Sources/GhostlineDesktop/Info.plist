@@ -16,8 +16,6 @@
     <string>1.0.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
-    <key>LSUIElement</key>
-    <true/>
     <key>NSAccessibilityUsageDescription</key>
     <string>Ghostline needs accessibility access to read and rewrite text in any app.</string>
     <key>NSAppleEventsUsageDescription</key>

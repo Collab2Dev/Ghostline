@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Carbon
+import CoreGraphics
 import Foundation
 import WebKit
 
@@ -12,10 +13,34 @@ app.delegate = delegate
 app.setActivationPolicy(.regular)
 app.run()
 
+private func resolvedCodexBinaryPath() -> String {
+  if FileManager.default.fileExists(atPath: bundledCodexBinary) {
+    return bundledCodexBinary
+  }
+
+  let searchPaths = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+    .split(separator: ":")
+    .map(String.init)
+
+  for path in searchPaths {
+    let candidate = URL(fileURLWithPath: path).appendingPathComponent("codex").path
+    if FileManager.default.isExecutableFile(atPath: candidate) {
+      return candidate
+    }
+  }
+
+  return "codex"
+}
+
 @MainActor
-final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessageHandler {
+final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate {
   private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
   private let statusLine = NSMenuItem(title: "Starting Ghostline...", action: nil, keyEquivalent: "")
+  private let requestAllPermissionsMenuItem = NSMenuItem(
+    title: "Request All Permissions",
+    action: #selector(requestAllPermissions),
+    keyEquivalent: "p"
+  )
   private let openEditorMenuItem = NSMenuItem(
     title: "Open Editor",
     action: #selector(openEditor),
@@ -35,11 +60,23 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
 
   private let focusInspector = FocusInspector()
   private let rewriteService = RewriteService()
+  private let permissionCenter = PermissionCenter()
   private var currentContext: FocusedTextContext?
   private var pollTimer: Timer?
   private var isBusy = false
   private var hotKeyController: HotKeyController?
   private var panelMode: PanelMode = .follow
+  private var liveRewriteOptions: [String: String] = ["provider": "codex", "tone": "natural"]
+  private var yoloModeEnabled = false
+  private var pendingYoloWorkItem: DispatchWorkItem?
+  private var scheduledYoloContextKey = ""
+  private var lastAutoRewriteKey = ""
+  private var codexLoginProcess: Process?
+  private var authSnapshot = AuthSnapshot(
+    codexAvailable: FileManager.default.isExecutableFile(atPath: resolvedCodexBinaryPath()),
+    codexLoggedIn: false,
+    codexStatus: "Checking Codex login..."
+  )
   
   private var window: NSWindow?
   private var webView: WKWebView?
@@ -50,6 +87,11 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
     startPolling()
     refreshFocusedContext()
     openEditor()
+    Task {
+      _ = await permissionCenter.refreshAutomationPermissionIfNeeded()
+      await refreshCodexStatus()
+      refreshFocusedContext()
+    }
   }
 
   func applicationWillTerminate(_ notification: Notification) {
@@ -76,6 +118,7 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
       button.image?.isTemplate = true
     }
 
+    requestAllPermissionsMenuItem.target = self
     openEditorMenuItem.target = self
     rewriteMenuItem.target = self
     rewriteMenuItem.keyEquivalentModifierMask = [.control, .option]
@@ -85,9 +128,10 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
     let menu = NSMenu()
     menu.addItem(statusLine)
     menu.addItem(.separator())
+    menu.addItem(requestAllPermissionsMenuItem)
+    menu.addItem(accessMenuItem)
     menu.addItem(openEditorMenuItem)
     menu.addItem(rewriteMenuItem)
-    menu.addItem(accessMenuItem)
     menu.addItem(.separator())
     menu.addItem(quitMenuItem)
     statusItem.menu = menu
@@ -99,27 +143,35 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
       config.userContentController.add(self, name: "ghostline")
       
       let webView = WKWebView(frame: .zero, configuration: config)
+      webView.navigationDelegate = self
       webView.setValue(false, forKey: "drawsBackground") // Transparent background
       
       let window = NSWindow(
-        contentRect: NSRect(x: 0, y: 0, width: 460, height: 760),
-        styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
+        contentRect: NSRect(x: 0, y: 0, width: 520, height: 820),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
         backing: .buffered,
         defer: false
       )
       window.center()
       window.title = "Ghostline"
+      window.subtitle = "Desktop Writing Assistant"
       window.titleVisibility = .hidden
       window.titlebarAppearsTransparent = true
       window.isReleasedWhenClosed = false
-      window.backgroundColor = NSColor.windowBackgroundColor
+      window.backgroundColor = .clear
+      window.isOpaque = false
+      window.hasShadow = true
+      window.minSize = NSSize(width: 460, height: 720)
       window.level = .floating
       window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+      if #available(macOS 13.0, *) {
+        window.toolbarStyle = .unifiedCompact
+      }
       
       let visualEffect = NSVisualEffectView()
       visualEffect.blendingMode = .behindWindow
-      visualEffect.state = .active
-      visualEffect.material = .hudWindow
+      visualEffect.state = .followsWindowActiveState
+      visualEffect.material = .underWindowBackground
       window.contentView = visualEffect
       
       visualEffect.addSubview(webView)
@@ -131,9 +183,7 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
         webView.trailingAnchor.constraint(equalTo: visualEffect.trailingAnchor)
       ])
       
-      if let indexURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "public") {
-        webView.loadFileURL(indexURL, allowingReadAccessTo: indexURL.deletingLastPathComponent())
-      }
+      loadEditorInterface(into: webView)
       
       self.webView = webView
       self.window = window
@@ -147,6 +197,83 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
     window?.makeKeyAndOrderFront(nil)
     positionWindowIfNeeded()
     NSApp.activate(ignoringOtherApps: true)
+  }
+
+  private func loadEditorInterface(into webView: WKWebView) {
+    guard let source = resolvedEditorSource() else {
+      statusLine.title = "Ghostline editor files are missing."
+      webView.loadHTMLString(
+        """
+        <html>
+          <body style="font-family:-apple-system; padding:24px; color:#111827;">
+            <h2>Ghostline could not find its editor files.</h2>
+            <p>Run the app from the project root or start the local web server, then reopen Ghostline.</p>
+            <p><code>cd /Users/wr/github/Ghostline && swift run GhostlineDesktop</code></p>
+          </body>
+        </html>
+        """,
+        baseURL: nil
+      )
+      return
+    }
+
+    statusLine.title = "Opening Ghostline editor..."
+    switch source {
+    case .file(let url, let readAccessURL):
+      webView.loadFileURL(url, allowingReadAccessTo: readAccessURL)
+    case .remote(let url):
+      webView.load(URLRequest(url: url))
+    }
+  }
+
+  private func resolvedEditorSource() -> EditorSource? {
+    if let override = ProcessInfo.processInfo.environment["GHOSTLINE_EDITOR_URL"],
+       let url = URL(string: override) {
+      return .remote(url)
+    }
+
+    if let bundledURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "public") {
+      return .file(bundledURL, bundledURL.deletingLastPathComponent())
+    }
+
+    let workingTreeURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+      .appendingPathComponent("public/index.html")
+    if FileManager.default.fileExists(atPath: workingTreeURL.path) {
+      return .file(workingTreeURL, workingTreeURL.deletingLastPathComponent())
+    }
+
+    return URL(string: "http://127.0.0.1:3000").map { .remote($0) }
+  }
+
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    statusLine.title = "Ghostline editor ready."
+    pushContextToWebView()
+  }
+
+  func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    presentEditorLoadError(in: webView, error: error)
+  }
+
+  func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    presentEditorLoadError(in: webView, error: error)
+  }
+
+  private func presentEditorLoadError(in webView: WKWebView, error: Error) {
+    statusLine.title = "Ghostline editor failed to load."
+    let escapedMessage = htmlEscaped(error.localizedDescription)
+    webView.loadHTMLString(
+      """
+      <html>
+        <body style="font-family:-apple-system; padding:24px; color:#111827;">
+          <h2>Ghostline could not open the editor.</h2>
+          <p>\(escapedMessage)</p>
+          <p>Try running from the repo root:</p>
+          <p><code>cd /Users/wr/github/Ghostline && swift run GhostlineDesktop</code></p>
+        </body>
+      </html>
+      """,
+      baseURL: nil
+    )
   }
 
   func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -180,6 +307,30 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
       return
     }
 
+    if action == "requestPermissions" {
+      requestAllPermissions()
+      return
+    }
+
+    if action == "requestPermission", let rawPermission = body["permission"] as? String,
+       let permission = PermissionKind(rawValue: rawPermission) {
+      requestPermission(permission)
+      return
+    }
+
+    if action == "codexLogin" {
+      startCodexLogin()
+      return
+    }
+
+    if action == "refreshConnection" {
+      Task {
+        await refreshCodexStatus()
+        refreshFocusedContext()
+      }
+      return
+    }
+
     if action == "requestAccess" {
       requestAccessibilityAccess()
       return
@@ -200,12 +351,15 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
   }
 
   @objc private func refreshFocusedContext() {
-    let hasAccess = AccessibilityPermission.isTrusted(prompt: false)
+    let permissions = permissionCenter.snapshot()
+    let hasAccess = permissions.accessibility
+    requestAllPermissionsMenuItem.isHidden = permissions.allGranted
     accessMenuItem.isHidden = hasAccess
     guard hasAccess else {
       currentContext = nil
       rewriteMenuItem.isEnabled = false
       statusLine.title = "Grant Accessibility access."
+      pushContextToWebView()
       return
     }
     guard !isBusy else {
@@ -220,18 +374,20 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
       statusLine.title = "Focus a text field to start."
     }
     pushContextToWebView()
+    scheduleYoloRewriteIfNeeded()
     positionWindowIfNeeded()
   }
 
   @objc func rewriteCurrentSentence() {
-    rewriteFocusedSentence(options: [:])
+    rewriteFocusedSentence(options: liveRewriteOptions)
   }
 
-  private func rewriteFocusedSentence(options: [String: String]) {
+  private func rewriteFocusedSentence(options: [String: String], isAutomatic: Bool = false) {
     guard !isBusy, let context = focusInspector.captureFocusedTextContext() else { return }
+    pendingYoloWorkItem?.cancel()
     isBusy = true
     rewriteMenuItem.isEnabled = false
-    statusLine.title = "Rewriting..."
+    statusLine.title = isAutomatic ? "Polishing automatically..." : "Rewriting..."
     pushContextToWebView()
     
     Task {
@@ -241,11 +397,14 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
         let payload = RewriteBridgePayload(
           originalText: context.sentence,
           improvedText: rewrite.improvedText,
-          finalText: rewrite.finalText
+          finalText: rewrite.finalText,
+          provider: options["provider"] ?? self.liveRewriteOptions["provider"] ?? "codex"
         )
         if let json = try? JSONEncoder().encode(payload), let jsonString = String(data: json, encoding: .utf8) {
           _ = try? await self.webView?.evaluateJavaScript("window.onGhostlineResult(\(jsonString))")
         }
+        self.lastAutoRewriteKey = self.contextKey(sentence: rewrite.finalText)
+        self.scheduledYoloContextKey = self.lastAutoRewriteKey
         self.isBusy = false
         self.statusLine.title = "Done."
         self.refreshFocusedContext()
@@ -260,6 +419,40 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
 
   @objc private func requestAccessibilityAccess() {
     _ = AccessibilityPermission.isTrusted(prompt: true)
+    refreshFocusedContext()
+  }
+
+  @objc private func requestAllPermissions() {
+    requestPermissions([.accessibility, .automation, .screenRecording])
+  }
+
+  private func requestPermission(_ permission: PermissionKind) {
+    requestPermissions([permission])
+  }
+
+  private func requestPermissions(_ permissions: [PermissionKind]) {
+    statusLine.title = "Requesting permissions..."
+    pushContextToWebView()
+
+    Task {
+      for permission in permissions {
+        _ = await permissionCenter.request(permission)
+      }
+
+      let snapshot = permissionCenter.snapshot()
+      if snapshot.allGranted {
+        statusLine.title = "All permissions granted."
+      } else {
+        let missing = permissions.first(where: { !snapshot.isGranted(for: $0) })
+        if let missing {
+          openSystemSettings(for: missing)
+          statusLine.title = "Open System Settings and finish \(missing.displayName)."
+        } else {
+          statusLine.title = "Permissions updated. Review System Settings if needed."
+        }
+      }
+      refreshFocusedContext()
+    }
   }
 
   @objc private func quit() {
@@ -267,23 +460,113 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
   }
 
   private func updatePreferences(_ preferences: [String: String]) {
+    liveRewriteOptions = preferences.filter { key, value in
+      ["provider", "model", "apiKey", "endpoint", "tone"].contains(key) && !value.isEmpty
+    }
+    liveRewriteOptions["provider"] = liveRewriteOptions["provider"] ?? "codex"
+    liveRewriteOptions["tone"] = liveRewriteOptions["tone"] ?? "natural"
+
     if let mode = preferences["displayMode"], let parsedMode = PanelMode(rawValue: mode) {
       panelMode = parsedMode
     }
+    yoloModeEnabled = preferences["yoloMode"] == "true"
+    if !yoloModeEnabled {
+      pendingYoloWorkItem?.cancel()
+      scheduledYoloContextKey = ""
+    }
     positionWindowIfNeeded()
+    pushContextToWebView()
   }
 
   private func pushContextToWebView() {
+    let permissions = permissionCenter.snapshot()
     let payload = FocusContextPayload(
       sentence: currentContext?.sentence ?? "",
       appName: focusInspector.frontmostAppName(),
-      hasAccess: AccessibilityPermission.isTrusted(prompt: false),
+      hasAccess: permissions.accessibility,
+      permissions: permissions,
+      auth: authSnapshot,
       status: statusLine.title
     )
     guard let json = try? JSONEncoder().encode(payload), let jsonString = String(data: json, encoding: .utf8) else {
       return
     }
     _ = webView?.evaluateJavaScript("window.onGhostlineContext(\(jsonString))")
+  }
+
+  private func scheduleYoloRewriteIfNeeded() {
+    guard yoloModeEnabled, !isBusy, let context = currentContext else {
+      pendingYoloWorkItem?.cancel()
+      return
+    }
+
+    let key = contextKey(sentence: context.sentence)
+    guard key != lastAutoRewriteKey, key != scheduledYoloContextKey else {
+      return
+    }
+
+    scheduledYoloContextKey = key
+    pendingYoloWorkItem?.cancel()
+
+    let workItem = DispatchWorkItem { [weak self] in
+      Task { @MainActor in
+        guard let self else { return }
+        guard self.yoloModeEnabled, !self.isBusy else { return }
+        guard let latestContext = self.focusInspector.captureFocusedTextContext() else { return }
+        guard self.contextKey(sentence: latestContext.sentence) == key else { return }
+        self.rewriteFocusedSentence(options: self.liveRewriteOptions, isAutomatic: true)
+      }
+    }
+
+    pendingYoloWorkItem = workItem
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.35, execute: workItem)
+  }
+
+  private func contextKey(sentence: String) -> String {
+    "\(focusInspector.frontmostAppName())::\(sentence)"
+  }
+
+  private func openSystemSettings(for permission: PermissionKind) {
+    guard let url = URL(string: permission.systemSettingsURL) else {
+      return
+    }
+    NSWorkspace.shared.open(url)
+  }
+
+  private func startCodexLogin() {
+    let codexBinary = resolvedCodexBinaryPath()
+    guard FileManager.default.isExecutableFile(atPath: codexBinary) || codexBinary == "codex" else {
+      authSnapshot = AuthSnapshot(codexAvailable: false, codexLoggedIn: false, codexStatus: "Codex CLI was not found.")
+      statusLine.title = "Install Codex to use Codex login."
+      pushContextToWebView()
+      return
+    }
+
+    do {
+      let process = Process()
+      process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+      process.arguments = [codexBinary, "login"]
+      process.terminationHandler = { [weak self] _ in
+        Task { @MainActor in
+          self?.codexLoginProcess = nil
+          await self?.refreshCodexStatus()
+        }
+      }
+      codexLoginProcess = process
+      try process.run()
+      authSnapshot = AuthSnapshot(codexAvailable: true, codexLoggedIn: false, codexStatus: "Finish the Codex login flow in your browser, then refresh.")
+      statusLine.title = "Codex login opened."
+      pushContextToWebView()
+    } catch {
+      authSnapshot = AuthSnapshot(codexAvailable: true, codexLoggedIn: false, codexStatus: error.localizedDescription)
+      statusLine.title = "Codex login failed to open."
+      pushContextToWebView()
+    }
+  }
+
+  private func refreshCodexStatus() async {
+    authSnapshot = await CodexAuthCenter.fetchStatus()
+    pushContextToWebView()
   }
 
   private func positionWindowIfNeeded() {
@@ -336,6 +619,219 @@ enum AccessibilityPermission {
   static func isTrusted(prompt: Bool) -> Bool {
     let options = ["AXTrustedCheckOptionPrompt": prompt] as CFDictionary
     return AXIsProcessTrustedWithOptions(options)
+  }
+}
+
+enum ScreenRecordingPermission {
+  static func isGranted() -> Bool {
+    CGPreflightScreenCaptureAccess()
+  }
+
+  static func request() -> Bool {
+    CGRequestScreenCaptureAccess()
+  }
+}
+
+enum AutomationPermission {
+  private static let targetBundleIdentifier = "com.apple.systemevents"
+
+  @MainActor
+  static func request() async -> Bool {
+    await ensureTargetRunning()
+    return await queryPermission(prompt: true)
+  }
+
+  @MainActor
+  static func isGranted() async -> Bool {
+    await ensureTargetRunning()
+    return await queryPermission(prompt: false)
+  }
+
+  @MainActor
+  private static func ensureTargetRunning() async {
+    if !NSRunningApplication.runningApplications(withBundleIdentifier: targetBundleIdentifier).isEmpty {
+      return
+    }
+
+    guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: targetBundleIdentifier) else {
+      return
+    }
+
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.activates = false
+    configuration.hides = true
+
+    await withCheckedContinuation { continuation in
+      NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, _ in
+        continuation.resume()
+      }
+    }
+  }
+
+  private static func queryPermission(prompt: Bool) async -> Bool {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async {
+        let descriptor = NSAppleEventDescriptor(bundleIdentifier: targetBundleIdentifier)
+        let status = AEDeterminePermissionToAutomateTarget(
+          descriptor.aeDesc,
+          AEEventClass(typeWildCard),
+          AEEventID(typeWildCard),
+          prompt
+        )
+        continuation.resume(returning: status == noErr)
+      }
+    }
+  }
+}
+
+enum PermissionKind: String {
+  case accessibility
+  case automation
+  case screenRecording
+
+  var displayName: String {
+    switch self {
+    case .accessibility:
+      return "Accessibility"
+    case .automation:
+      return "Automation"
+    case .screenRecording:
+      return "Screen Recording"
+    }
+  }
+
+  var systemSettingsURL: String {
+    switch self {
+    case .accessibility:
+      return "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+    case .automation:
+      return "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+    case .screenRecording:
+      return "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+    }
+  }
+}
+
+struct PermissionSnapshot: Codable {
+  let accessibility: Bool
+  let automation: Bool
+  let screenRecording: Bool
+
+  var allGranted: Bool {
+    accessibility && automation && screenRecording
+  }
+
+  func isGranted(for permission: PermissionKind) -> Bool {
+    switch permission {
+    case .accessibility:
+      return accessibility
+    case .automation:
+      return automation
+    case .screenRecording:
+      return screenRecording
+    }
+  }
+}
+
+struct AuthSnapshot: Codable {
+  let codexAvailable: Bool
+  let codexLoggedIn: Bool
+  let codexStatus: String
+}
+
+enum CodexAuthCenter {
+  static func fetchStatus() async -> AuthSnapshot {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async {
+        continuation.resume(returning: fetchStatusSync())
+      }
+    }
+  }
+
+  private static func fetchStatusSync() -> AuthSnapshot {
+    let codexBinary = resolvedCodexBinaryPath()
+    let executableExists =
+      codexBinary == "codex" || FileManager.default.isExecutableFile(atPath: codexBinary)
+
+    guard executableExists else {
+      return AuthSnapshot(
+        codexAvailable: false,
+        codexLoggedIn: false,
+        codexStatus: "Codex CLI not found on this Mac."
+      )
+    }
+
+    let process = Process()
+    let stdout = Pipe()
+    let stderr = Pipe()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = [codexBinary, "login", "status"]
+    process.standardOutput = stdout
+    process.standardError = stderr
+
+    do {
+      try process.run()
+      process.waitUntilExit()
+    } catch {
+      return AuthSnapshot(
+        codexAvailable: true,
+        codexLoggedIn: false,
+        codexStatus: error.localizedDescription
+      )
+    }
+
+    let output = (
+      String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    ) + "\n" + (
+      String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    )
+
+    let cleaned = output
+      .split(whereSeparator: \.isNewline)
+      .map(String.init)
+      .filter { !$0.hasPrefix("WARNING:") }
+      .joined(separator: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+
+    let loggedIn = cleaned.localizedCaseInsensitiveContains("logged in")
+    let statusText = cleaned.isEmpty ? "Codex is installed." : cleaned
+
+    return AuthSnapshot(
+      codexAvailable: true,
+      codexLoggedIn: loggedIn,
+      codexStatus: statusText
+    )
+  }
+}
+
+@MainActor
+final class PermissionCenter {
+  private var cachedAutomationPermission = false
+
+  func snapshot() -> PermissionSnapshot {
+    PermissionSnapshot(
+      accessibility: AccessibilityPermission.isTrusted(prompt: false),
+      automation: cachedAutomationPermission,
+      screenRecording: ScreenRecordingPermission.isGranted()
+    )
+  }
+
+  func request(_ permission: PermissionKind) async -> PermissionSnapshot {
+    switch permission {
+    case .accessibility:
+      _ = AccessibilityPermission.isTrusted(prompt: true)
+    case .screenRecording:
+      _ = ScreenRecordingPermission.request()
+    case .automation:
+      cachedAutomationPermission = await AutomationPermission.request()
+    }
+
+    return await refreshAutomationPermissionIfNeeded()
+  }
+
+  func refreshAutomationPermissionIfNeeded() async -> PermissionSnapshot {
+    cachedAutomationPermission = await AutomationPermission.isGranted()
+    return snapshot()
   }
 }
 
@@ -460,12 +956,15 @@ private struct RewriteBridgePayload: Codable {
   let originalText: String
   let improvedText: String
   let finalText: String
+  let provider: String
 }
 
 private struct FocusContextPayload: Codable {
   let sentence: String
   let appName: String
   let hasAccess: Bool
+  let permissions: PermissionSnapshot
+  let auth: AuthSnapshot
   let status: String
 }
 
@@ -473,6 +972,11 @@ private enum PanelMode: String {
   case follow
   case docked
   case hidden
+}
+
+private enum EditorSource {
+  case file(URL, URL)
+  case remote(URL)
 }
 
 final class RewriteService: Sendable {
@@ -617,7 +1121,7 @@ final class RewriteService: Sendable {
   }
 
   private func resolvedCodexBinary() -> String {
-    FileManager.default.fileExists(atPath: bundledCodexBinary) ? bundledCodexBinary : "codex"
+    resolvedCodexBinaryPath()
   }
 
   private func responseURL(from baseURL: String) throws -> URL {
@@ -774,4 +1278,11 @@ struct GhostlineDesktopError: LocalizedError {
 private func jsStringLiteral(_ value: String) -> String {
   let data = try? JSONEncoder().encode(value)
   return String(data: data ?? Data("\"Rewrite failed.\"".utf8), encoding: .utf8) ?? "\"Rewrite failed.\""
+}
+
+private func htmlEscaped(_ value: String) -> String {
+  value
+    .replacingOccurrences(of: "&", with: "&amp;")
+    .replacingOccurrences(of: "<", with: "&lt;")
+    .replacingOccurrences(of: ">", with: "&gt;")
 }

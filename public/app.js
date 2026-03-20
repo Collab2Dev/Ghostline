@@ -17,6 +17,13 @@ const accessibilityStatus = document.querySelector("#accessibilityStatus");
 const automationStatus = document.querySelector("#automationStatus");
 const screenRecordingStatus = document.querySelector("#screenRecordingStatus");
 const permissionSummary = document.querySelector("#permissionSummary");
+const codexStatus = document.querySelector("#codexStatus");
+const codexStatusDetail = document.querySelector("#codexStatusDetail");
+const codexLoginButton = document.querySelector("#codexLoginButton");
+const refreshConnectionButton = document.querySelector("#refreshConnectionButton");
+const providerModeLabel = document.querySelector("#providerModeLabel");
+const providerHint = document.querySelector("#providerHint");
+const apiFieldNodes = Array.from(document.querySelectorAll(".api-field"));
 
 const settingsForm = document.querySelector("#settingsForm");
 const providerSelect = document.querySelector("#provider");
@@ -49,6 +56,11 @@ let permissionState = {
   accessibility: false,
   automation: false,
   screenRecording: false
+};
+let authState = {
+  codexAvailable: false,
+  codexLoggedIn: false,
+  codexStatus: "Checking Codex..."
 };
 
 const settings = {
@@ -126,16 +138,37 @@ requestAllPermissionsButton.addEventListener("click", () => {
 requestAccessibilityButton.addEventListener("click", () => requestPermission("accessibility"));
 requestAutomationButton.addEventListener("click", () => requestPermission("automation"));
 requestScreenRecordingButton.addEventListener("click", () => requestPermission("screenRecording"));
+codexLoginButton.addEventListener("click", () => {
+  if (!postToGhostline({ action: "codexLogin" })) {
+    showToast("Codex login can only be launched from the macOS app.");
+    return;
+  }
+
+  showToast("Opening Codex login.");
+});
+refreshConnectionButton.addEventListener("click", () => {
+  if (!postToGhostline({ action: "refreshConnection" })) {
+    showToast("Connection refresh is only available inside the macOS app.");
+    return;
+  }
+
+  showToast("Refreshing connection status.");
+});
 
 updateStatus();
 updatePermissionUI();
+updateConnectionUI();
 sendPreferences();
 
 window.onGhostlineContext = (payload) => {
   const context = typeof payload === "string" ? JSON.parse(payload) : payload;
   currentFocusSentence = context.sentence || "";
-  permissionState = normalizePermissions(context.permissions);
+  permissionState = normalizePermissions(
+    context.permissions || { accessibility: context.hasAccess }
+  );
+  authState = normalizeAuth(context.auth);
   updatePermissionUI();
+  updateConnectionUI();
 
   if (currentFocusSentence) {
     codexFocus.textContent = currentFocusSentence;
@@ -233,6 +266,7 @@ function updateStatus(forcedState = "") {
   rewriteIndicator.className = `status-dot ${forcedState === "Error" ? "error" : isRewriting ? "polishing" : "live"}`;
   copyLastRewriteButton.disabled = !lastRewriteSnapshot?.rewritten;
   rewriteFocusButton.disabled = isRewriting || !currentFocusSentence || !permissionState.accessibility;
+  updateConnectionUI();
 }
 
 function updatePermissionUI() {
@@ -253,8 +287,8 @@ function updatePermissionUI() {
 
   requestAllPermissionsButton.disabled = allGranted;
   permissionSummary.textContent = allGranted
-    ? "All permissions are granted. Ghostline can now follow text, automate desktop flows, and prepare richer screen-aware behavior."
-    : "Accessibility lets Ghostline rewrite in place. Automation and Screen Recording make the native app feel more hands-off and complete.";
+    ? "All three permissions are active. Ghostline can stay beside your writing like a proper desktop utility."
+    : "Grant Accessibility first, then finish Automation and Screen Recording so the Mac app can behave like a full native companion.";
 }
 
 function updatePermissionTile(button, statusNode, granted) {
@@ -269,6 +303,37 @@ function normalizePermissions(permissions) {
     automation: Boolean(permissions?.automation),
     screenRecording: Boolean(permissions?.screenRecording)
   };
+}
+
+function normalizeAuth(auth) {
+  return {
+    codexAvailable: Boolean(auth?.codexAvailable),
+    codexLoggedIn: Boolean(auth?.codexLoggedIn),
+    codexStatus: auth?.codexStatus || "Codex status unavailable."
+  };
+}
+
+function updateConnectionUI() {
+  const usingCodex = settings.provider === "codex";
+
+  providerModeLabel.textContent = usingCodex ? "Codex Login" : "API Key Provider";
+  providerHint.textContent = usingCodex
+    ? "Codex mode ignores the API key field below and uses the Codex app or CLI session on this Mac."
+    : `Using ${labelForProviderKey(settings.provider)}. The API key and endpoint fields below are active.`;
+
+  codexStatus.textContent = authState.codexLoggedIn
+    ? "Codex Connected"
+    : authState.codexAvailable
+      ? "Codex Needs Login"
+      : "Codex Missing";
+  codexStatusDetail.textContent = authState.codexStatus;
+
+  codexLoginButton.disabled = !authState.codexAvailable;
+  apiFieldNodes.forEach((node) => {
+    node.classList.toggle("is-inactive", usingCodex);
+  });
+  apiKeyInput.disabled = usingCodex;
+  endpointInput.disabled = usingCodex;
 }
 
 async function copyText(text) {

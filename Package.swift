@@ -19,9 +19,6 @@ let package = Package(
       exclude: [
         "AppIcon.icns",
         "Info.plist"
-      ],
-      resources: [
-        .copy("../../public")
       ]
     )
   ]

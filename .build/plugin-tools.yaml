@@ -3,74 +3,59 @@ client:
   file-system: device-agnostic
 tools: {}
 targets:
-  "GhostlineDesktop-arm64-apple-macosx26.0-debug.exe": ["<GhostlineDesktop-arm64-apple-macosx26.0-debug.exe>"]
-  "GhostlineDesktop-arm64-apple-macosx26.0-debug.module": ["<GhostlineDesktop-arm64-apple-macosx26.0-debug.module>"]
+  "GhostlineDesktop-arm64-apple-macosx26.0-release.exe": ["<GhostlineDesktop-arm64-apple-macosx26.0-release.exe>"]
+  "GhostlineDesktop-arm64-apple-macosx26.0-release.module": ["<GhostlineDesktop-arm64-apple-macosx26.0-release.module>"]
   "PackageStructure": ["<PackageStructure>"]
-  "main": ["<GhostlineDesktop-arm64-apple-macosx26.0-debug.exe>","<GhostlineDesktop-arm64-apple-macosx26.0-debug.module>"]
-  "test": ["<GhostlineDesktop-arm64-apple-macosx26.0-debug.exe>","<GhostlineDesktop-arm64-apple-macosx26.0-debug.module>"]
+  "main": ["<GhostlineDesktop-arm64-apple-macosx26.0-release.exe>","<GhostlineDesktop-arm64-apple-macosx26.0-release.module>"]
+  "test": ["<GhostlineDesktop-arm64-apple-macosx26.0-release.exe>","<GhostlineDesktop-arm64-apple-macosx26.0-release.module>"]
 default: "main"
 nodes:
   "/Users/wr/github/Ghostline/Sources/GhostlineDesktop/":
     is-directory-structure: true
     content-exclusion-patterns: [".git",".build"]
-  "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop":
-    is-mutated: true
 commands:
-  "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop-entitlement.plist":
-    tool: write-auxiliary-file
-    inputs: ["<entitlement-plist>","<com.apple.security.get-task-allow>"]
-    outputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop-entitlement.plist"]
-    description: "Write auxiliary file /Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop-entitlement.plist"
-
-  "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/sources":
+  "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.build/sources":
     tool: write-auxiliary-file
     inputs: ["<sources-file-list>","/Users/wr/github/Ghostline/Sources/GhostlineDesktop/main.swift"]
-    outputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/sources"]
-    description: "Write auxiliary file /Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/sources"
+    outputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.build/sources"]
+    description: "Write auxiliary file /Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.build/sources"
 
-  "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.product/Objects.LinkFileList":
+  "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.product/Objects.LinkFileList":
     tool: write-auxiliary-file
-    inputs: ["<link-file-list>","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/main.swift.o"]
-    outputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.product/Objects.LinkFileList"]
-    description: "Write auxiliary file /Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.product/Objects.LinkFileList"
+    inputs: ["<link-file-list>","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.build/main.swift.o"]
+    outputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.product/Objects.LinkFileList"
 
-  "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt":
+  "/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt":
     tool: write-auxiliary-file
-    inputs: ["<swift-get-version>","/Library/Developer/CommandLineTools/usr/bin/swiftc"]
-    outputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"]
+    inputs: ["<swift-get-version>","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"]
+    outputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"]
     always-out-of-date: "true"
-    description: "Write auxiliary file /Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+    description: "Write auxiliary file /Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"
 
-  "<GhostlineDesktop-arm64-apple-macosx26.0-debug.exe>":
+  "<GhostlineDesktop-arm64-apple-macosx26.0-release.exe>":
     tool: phony
-    inputs: ["<GhostlineDesktop-arm64-apple-macosx26.0-debug.exe-CodeSigning>"]
-    outputs: ["<GhostlineDesktop-arm64-apple-macosx26.0-debug.exe>"]
+    inputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop"]
+    outputs: ["<GhostlineDesktop-arm64-apple-macosx26.0-release.exe>"]
 
-  "<GhostlineDesktop-arm64-apple-macosx26.0-debug.module>":
+  "<GhostlineDesktop-arm64-apple-macosx26.0-release.module>":
     tool: phony
-    inputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/main.swift.o","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/Modules/GhostlineDesktop.swiftmodule"]
-    outputs: ["<GhostlineDesktop-arm64-apple-macosx26.0-debug.module>"]
+    inputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.build/main.swift.o","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/Modules/GhostlineDesktop.swiftmodule"]
+    outputs: ["<GhostlineDesktop-arm64-apple-macosx26.0-release.module>"]
 
-  "C.GhostlineDesktop-arm64-apple-macosx26.0-debug.exe":
+  "C.GhostlineDesktop-arm64-apple-macosx26.0-release.exe":
     tool: shell
-    inputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/main.swift.o","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.product/Objects.LinkFileList"]
-    outputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop"]
-    description: "Linking ./.build/arm64-apple-macosx/debug/GhostlineDesktop"
-    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-L","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug","-o","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop","-module-name","GhostlineDesktop","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-alias","-Xlinker","_GhostlineDesktop_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Library/Developer/CommandLineTools/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx13.0","-Xlinker","-add_ast_path","-Xlinker","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/Modules/GhostlineDesktop.swiftmodule","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g"]
+    inputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.build/main.swift.o","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.product/Objects.LinkFileList"]
+    outputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop"]
+    description: "Linking ./.build/arm64-apple-macosx/release/GhostlineDesktop"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release","-o","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop","-module-name","GhostlineDesktop","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-dead_strip","-Xlinker","-alias","-Xlinker","_GhostlineDesktop_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx13.0","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
 
-  "C.GhostlineDesktop-arm64-apple-macosx26.0-debug.exe-entitlements":
+  "C.GhostlineDesktop-arm64-apple-macosx26.0-release.module":
     tool: shell
-    inputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop-entitlement.plist"]
-    outputs: ["<GhostlineDesktop-arm64-apple-macosx26.0-debug.exe-CodeSigning>"]
-    description: "Applying debug entitlements to ./.build/arm64-apple-macosx/debug/GhostlineDesktop"
-    args: ["codesign","--force","--sign","-","--entitlements","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop-entitlement.plist","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop"]
-
-  "C.GhostlineDesktop-arm64-apple-macosx26.0-debug.module":
-    tool: shell
-    inputs: ["/Users/wr/github/Ghostline/Sources/GhostlineDesktop/main.swift","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/sources"]
-    outputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/main.swift.o","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/Modules/GhostlineDesktop.swiftmodule"]
+    inputs: ["/Users/wr/github/Ghostline/Sources/GhostlineDesktop/main.swift","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.build/sources"]
+    outputs: ["/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.build/main.swift.o","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/Modules/GhostlineDesktop.swiftmodule"]
     description: "Compiling Swift Module 'GhostlineDesktop' (1 sources)"
-    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-module-name","GhostlineDesktop","-emit-dependencies","-emit-module","-emit-module-path","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/Modules/GhostlineDesktop.swiftmodule","-output-file-map","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/output-file-map.json","-incremental","-c","@/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/GhostlineDesktop.build/sources","-I","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx13.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-index-store-path","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-j12","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","GhostlineDesktop_main","-color-diagnostics","-swift-version","6","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g","-Xcc","-isysroot","-Xcc","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-Xcc","-fPIC","-Xcc","-g","-package-name","ghostline"]
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","GhostlineDesktop","-emit-dependencies","-emit-module","-emit-module-path","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/Modules/GhostlineDesktop.swiftmodule","-output-file-map","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.build/output-file-map.json","-whole-module-optimization","-num-threads","12","-c","@/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/GhostlineDesktop.build/sources","-I","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/Modules","-target","arm64-apple-macosx13.0","-whole-module-optimization","-num-threads","12","-serialize-diagnostics","-O","-j12","-DSWIFT_PACKAGE","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/wr/github/Ghostline/.build/arm64-apple-macosx/release/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","GhostlineDesktop_main","-swift-version","6","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","ghostline"]
 
   "PackageStructure":
     tool: package-structure-tool

@@ -15,7 +15,10 @@ let package = Package(
   ],
   targets: [
     .executableTarget(
-      name: "GhostlineDesktop"
+      name: "GhostlineDesktop",
+      resources: [
+        .copy("../../public")
+      ]
     )
   ]
 )

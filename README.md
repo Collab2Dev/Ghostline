@@ -9,76 +9,66 @@ Put the caret inside a sentence, press `Tab`, and the app will:
 3. Replace the original sentence directly in the editor.
 4. Let you copy a Codex-ready handoff prompt with the current draft, focus sentence, and latest rewrite.
 
-The UI is styled like a glossy macOS Tahoe-era glass window with a fake `Wi-Fi Off` control tile.
+## Features
 
-## Run it
+- **In-place Rewriting:** No popups or flashes. The sentence updates directly where you type.
+- **YOLO Mode:** Optional auto-rewrite after a 1.5s pause or on paragraph breaks.
+- **Provider Choice:** Use local Codex, OpenAI, Claude, Gemini, Kimi, Qwen, OpenRouter, Groq, DeepSeek, Ollama, or any custom OpenAI-compatible endpoint.
+- **Native macOS App:** A lightweight menu bar companion that works in any app via Accessibility APIs.
+- **Shimmer Effect:** Visual feedback during rewriting so you know exactly what is being processed.
 
-Make sure Node 18+ is installed, open a terminal in the project folder, sign in to Codex once, then start the app:
+## Installation & Usage
+
+### 1. Download the App
+Download the latest `Ghostline-mac.zip` from the [Releases](https://github.com/Collab2Dev/Ghostline/releases) page. Unzip and move `Ghostline.app` to your Applications folder.
+
+### 2. Setup
+On first launch:
+1. Open the Ghostline menu bar item (pencil and sparkles icon).
+2. Click **Request Accessibility Access**.
+3. Approve Ghostline in macOS System Settings.
+
+### 3. Usage
+- **In any app:** Press `Control` + `Option` + `G` to rewrite the current sentence.
+- **In the Ghostline Editor:** Press `Tab` or enable **YOLO Mode** in Settings.
+
+## Development
+
+### Prerequisites
+- macOS 13.0+
+- Xcode / Swift 6.0+
+- Node.js 18+
+
+### Build the `.app` Bundle
+Run the following command to build, package, and sign the application:
 
 ```bash
-cd /Users/wr/github/Ghostline
-/Applications/Codex.app/Contents/Resources/codex login
-npm start
+make app
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+This creates `Ghostline.app` and `Ghostline-mac.zip`.
 
-Ghostline can also use API-key backends. Set `GHOSTLINE_PROVIDER` to force one, or leave it on `auto` and Ghostline will try the configured backends in this order:
-
-1. Codex
-2. OpenAI
-3. Claude
-4. Gemini
-
-## Notes
-
-- Default backend: local Codex CLI using your Codex or ChatGPT login
-- Choose a backend with `GHOSTLINE_PROVIDER=auto|codex|openai|claude|anthropic|gemini`
-- Override the Codex model with `CODEX_MODEL`
-- OpenAI uses `OPENAI_API_KEY` and optional `OPENAI_MODEL`
-- Claude uses `ANTHROPIC_API_KEY` and optional `ANTHROPIC_MODEL`
-- Gemini uses `GEMINI_API_KEY` and optional `GEMINI_MODEL`
-- No extra dependencies are required
-- The Codex bridge is local-only and does not make an extra API call
-
-Examples:
-
+### Run from Source (Terminal)
 ```bash
-cd /Users/wr/github/Ghostline
-GHOSTLINE_PROVIDER=claude ANTHROPIC_API_KEY="your_key_here" npm start
-```
+# Start the Node server
+node server.mjs
 
-```bash
-cd /Users/wr/github/Ghostline
-GHOSTLINE_PROVIDER=gemini GEMINI_API_KEY="your_key_here" npm start
-```
-
-The web UI also has a provider selector now, so you can switch between Auto, Codex, OpenAI, Claude, and Gemini without editing the request payload by hand.
-
-## Background App
-
-If you want Ghostline to live on your Mac like a lightweight Grammarly-style helper, there is now a local menu bar app:
-
-```bash
-cd /Users/wr/github/Ghostline
+# Run the Desktop assistant
 swift run GhostlineDesktop
 ```
 
-On first launch:
+Then open `http://127.0.0.1:3000`.
 
-1. Open the Ghostline menu bar item.
-2. Click `Request Accessibility Access`.
-3. Approve Ghostline in macOS System Settings so it can read and replace text in the focused field.
+## Configuration
 
-After that:
+Settings are managed directly in the Ghostline Editor's gear icon menu:
+- **Provider:** Codex / OpenAI / Claude / Gemini / Kimi / Qwen / OpenRouter / Groq / DeepSeek / Ollama / Custom.
+- **Model Name:** Override the preset default for any provider.
+- **API Key:** Stored locally in your browser.
+- **Endpoint:** Override the provider default or point Ghostline at any compatible base URL.
 
-1. Place your caret inside a sentence in any editable macOS text field that exposes Accessibility text APIs.
-2. Press `Control` + `Option` + `G`, or click `Rewrite Current Sentence` from the menu bar.
-3. Ghostline rewrites that sentence locally through the Codex CLI and writes it back into the focused field.
+## Notes
 
-Current limitations:
-
-- This is a native macOS prototype, not a packaged `.app` bundle yet.
-- Some apps block Accessibility-based text replacement, so behavior will vary by editor.
-- The helper detects focused editable fields and rewrites on demand; it does not yet auto-rewrite as you type.
-- The native helper is still Codex-backed for now; Claude and Gemini options currently apply to the web app path.
+- **Default backend:** Local Codex CLI (requires `codex login`).
+- **Multi-provider routing:** Claude uses Anthropic's OpenAI compatibility layer; Gemini uses Google's OpenAI compatibility endpoint; Kimi, Qwen, OpenRouter, Groq, DeepSeek, Ollama, and custom providers use compatible chat-completions endpoints.
+- **Local Privacy:** Your writing is processed according to your chosen provider's privacy policy. The "Codex Bridge" is local-only.

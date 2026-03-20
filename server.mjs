@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const publicDir = path.join(__dirname, "public");
+const publicDir = process.env.PUBLIC_DIR || path.join(__dirname, "public");
 const codexSchemaPath = path.join(__dirname, "codex-rewrite.schema.json");
 const bundledCodexBinary = "/Applications/Codex.app/Contents/Resources/codex";
 const port = Number(process.env.PORT || 3000);
@@ -16,8 +16,69 @@ const host = process.env.HOST || "127.0.0.1";
 const codexBinary =
   process.env.CODEX_BIN || (existsSync(bundledCodexBinary) ? bundledCodexBinary : "codex");
 const codexModel = process.env.CODEX_MODEL || process.env.OPENAI_MODEL || "";
-const anthropicModel = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
-const geminiModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const providerPresets = {
+  codex: {
+    label: "Codex",
+    defaultModel: codexModel
+  },
+  openai: {
+    label: "OpenAI",
+    defaultModel: process.env.OPENAI_MODEL || "gpt-5-mini",
+    endpoint: "https://api.openai.com/v1",
+    apiKeyEnv: "OPENAI_API_KEY"
+  },
+  claude: {
+    label: "Claude",
+    defaultModel: "claude-sonnet-4-0",
+    endpoint: "https://api.anthropic.com/v1",
+    apiKeyEnv: "ANTHROPIC_API_KEY"
+  },
+  gemini: {
+    label: "Gemini",
+    defaultModel: "gemini-2.5-flash",
+    endpoint: "https://generativelanguage.googleapis.com/v1beta/openai",
+    apiKeyEnv: "GEMINI_API_KEY"
+  },
+  kimi: {
+    label: "Kimi",
+    defaultModel: "kimi-latest",
+    endpoint: "https://api.moonshot.cn/v1",
+    apiKeyEnv: "MOONSHOT_API_KEY"
+  },
+  qwen: {
+    label: "Qwen",
+    defaultModel: "qwen-plus",
+    endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    apiKeyEnv: "DASHSCOPE_API_KEY"
+  },
+  openrouter: {
+    label: "OpenRouter",
+    defaultModel: "openai/gpt-5-mini",
+    endpoint: "https://openrouter.ai/api/v1",
+    apiKeyEnv: "OPENROUTER_API_KEY"
+  },
+  groq: {
+    label: "Groq",
+    defaultModel: "llama-3.3-70b-versatile",
+    endpoint: "https://api.groq.com/openai/v1",
+    apiKeyEnv: "GROQ_API_KEY"
+  },
+  deepseek: {
+    label: "DeepSeek",
+    defaultModel: "deepseek-chat",
+    endpoint: "https://api.deepseek.com/v1",
+    apiKeyEnv: "DEEPSEEK_API_KEY"
+  },
+  ollama: {
+    label: "Ollama",
+    defaultModel: "llama3.1:8b",
+    endpoint: "http://localhost:11434/v1"
+  },
+  custom: {
+    label: "Custom",
+    defaultModel: ""
+  }
+};
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -67,6 +128,9 @@ async function handleRewrite(request, response) {
 
   const sentence = typeof body?.sentence === "string" ? body.sentence.trim() : "";
   const requestedProvider = normalizeProviderName(body?.provider);
+  const customModel = normalizeValue(body?.model) || null;
+  const customApiKey = normalizeValue(body?.apiKey) || null;
+  const customEndpoint = normalizeValue(body?.endpoint) || null;
 
   if (!sentence) {
     respondJson(response, 400, { error: "A sentence is required." });
@@ -75,13 +139,19 @@ async function handleRewrite(request, response) {
 
   if (body?.provider != null && requestedProvider == null) {
     respondJson(response, 400, {
-      error: "Provider must be one of auto, codex, openai, claude, anthropic, or gemini."
+      error:
+        "Provider must be one of auto, codex, openai, claude, anthropic, gemini, kimi, qwen, openrouter, groq, deepseek, ollama, or custom."
     });
     return;
   }
 
   try {
-    const rewrite = await rewriteSentence(sentence, requestedProvider);
+    const rewrite = await rewriteSentence(sentence, {
+      provider: requestedProvider,
+      model: customModel,
+      apiKey: customApiKey,
+      endpoint: customEndpoint
+    });
 
     respondJson(response, 200, {
       provider: rewrite.provider,
@@ -96,8 +166,20 @@ async function handleRewrite(request, response) {
   }
 }
 
-async function rewriteSentence(sentence, requestedProvider) {
-  const providers = resolveProviderOrder(requestedProvider);
+async function rewriteSentence(sentence, options = {}) {
+  const requestedProvider = normalizeProviderName(options.provider);
+  const configuredProvider = normalizeProviderName(process.env.GHOSTLINE_PROVIDER);
+  const provider = requestedProvider || configuredProvider || "codex";
+
+  if (provider === "auto") {
+    return rewriteWithFallbackProviders(sentence, options);
+  }
+
+  return rewriteWithNamedProvider(sentence, options, provider);
+}
+
+async function rewriteWithFallbackProviders(sentence, options = {}) {
+  const providers = resolveProviderOrder();
 
   if (providers.length === 0) {
     throw new Error(
@@ -109,13 +191,7 @@ async function rewriteSentence(sentence, requestedProvider) {
 
   for (const provider of providers) {
     try {
-      const rewrite = await rewriteWithProvider(provider, sentence);
-
-      return {
-        provider,
-        improvedText: rewrite.improvedText,
-        finalText: rewrite.finalText
-      };
+      return await rewriteWithNamedProvider(sentence, options, provider);
     } catch (error) {
       lastError = error;
       console.warn(`${provider} rewrite failed.`, error);
@@ -125,29 +201,48 @@ async function rewriteSentence(sentence, requestedProvider) {
   throw lastError instanceof Error ? lastError : new Error("Rewrite failed.");
 }
 
-function resolveProviderOrder(requestedProvider) {
-  const configuredProvider = normalizeProviderName(process.env.GHOSTLINE_PROVIDER);
-  const preferredProvider = requestedProvider || configuredProvider || "auto";
+async function rewriteWithNamedProvider(sentence, options = {}, provider) {
+  if (provider === "codex") {
+    const rewrite = await rewriteWithCodex(sentence, {
+      ...options,
+      provider
+    });
 
-  if (preferredProvider !== "auto") {
-    return [preferredProvider];
+    return {
+      provider,
+      improvedText: rewrite.improvedText,
+      finalText: rewrite.finalText
+    };
   }
 
+  const rewrite = await rewriteWithCompatibleProvider(sentence, {
+    ...options,
+    provider
+  });
+
+  return {
+    provider,
+    improvedText: rewrite.improvedText,
+    finalText: rewrite.finalText
+  };
+}
+
+function resolveProviderOrder() {
   const providers = [];
 
   if (isCodexConfigured()) {
     providers.push("codex");
   }
 
-  if (process.env.OPENAI_API_KEY) {
+  if (hasConfiguredCredential("openai")) {
     providers.push("openai");
   }
 
-  if (process.env.ANTHROPIC_API_KEY) {
-    providers.push("anthropic");
+  if (hasConfiguredCredential("claude")) {
+    providers.push("claude");
   }
 
-  if (process.env.GEMINI_API_KEY) {
+  if (hasConfiguredCredential("gemini")) {
     providers.push("gemini");
   }
 
@@ -165,15 +260,15 @@ function normalizeProviderName(value) {
 
   const normalized = value.trim().toLowerCase();
 
+  if (normalized === "anthropic") {
+    return "claude";
+  }
+
   if (normalized === "auto") {
     return "auto";
   }
 
-  if (normalized === "claude") {
-    return "anthropic";
-  }
-
-  if (["codex", "openai", "anthropic", "gemini"].includes(normalized)) {
+  if (providerPresets[normalized]) {
     return normalized;
   }
 
@@ -184,39 +279,24 @@ function isCodexConfigured() {
   return Boolean(process.env.CODEX_BIN) || existsSync(bundledCodexBinary);
 }
 
-function rewriteWithProvider(provider, sentence) {
-  if (provider === "codex") {
-    return rewriteWithCodex(sentence);
-  }
-
-  if (provider === "openai") {
-    return rewriteWithOpenAI(sentence);
-  }
-
-  if (provider === "anthropic") {
-    return rewriteWithAnthropic(sentence);
-  }
-
-  if (provider === "gemini") {
-    return rewriteWithGemini(sentence);
-  }
-
-  throw new Error("Unsupported rewrite provider.");
+function hasConfiguredCredential(provider) {
+  const preset = providerPresets[provider];
+  return Boolean(preset?.apiKeyEnv && normalizeValue(process.env[preset.apiKeyEnv]));
 }
 
-async function rewriteWithOpenAI(sentence) {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is missing.");
-  }
+async function rewriteWithCompatibleProvider(sentence, options = {}) {
+  const resolved = resolveProviderOptions(options);
 
-  const improvedText = await createOpenAIResponse({
+  const improvedText = await createCompatibleChatCompletion({
     instructions: improveInstructions,
-    input: sentence
+    input: sentence,
+    options: resolved
   });
 
-  const finalText = await createOpenAIResponse({
+  const finalText = await createCompatibleChatCompletion({
     instructions: humanizeInstructions,
-    input: `Original sentence:\n${sentence}\n\nImproved sentence:\n${improvedText}`
+    input: `Original sentence:\n${sentence}\n\nImproved sentence:\n${improvedText}`,
+    options: resolved
   });
 
   return {
@@ -225,76 +305,42 @@ async function rewriteWithOpenAI(sentence) {
   };
 }
 
-async function createOpenAIResponse({ instructions, input }) {
-  const model = process.env.OPENAI_MODEL || "gpt-5-mini";
-
-  const apiResponse = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model,
-      instructions,
-      input,
-      max_output_tokens: 120,
-      reasoning: {
-        effort: "minimal"
-      }
-    })
-  });
-
-  const payload = await apiResponse.json();
-
-  if (!apiResponse.ok) {
-    const message =
-      payload?.error?.message || "OpenAI request failed while rewriting the sentence.";
-    throw new Error(message);
-  }
-
-  return cleanSentence(extractOutputText(payload));
-}
-
-async function rewriteWithAnthropic(sentence) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error("ANTHROPIC_API_KEY is missing.");
-  }
-
-  const improvedText = await createAnthropicResponse({
-    instructions: improveInstructions,
-    input: sentence
-  });
-
-  const finalText = await createAnthropicResponse({
-    instructions: humanizeInstructions,
-    input: `Original sentence:\n${sentence}\n\nImproved sentence:\n${improvedText}`
-  });
-
-  return {
-    improvedText,
-    finalText
+async function createCompatibleChatCompletion({ instructions, input, options }) {
+  const url = `${options.endpoint.replace(/\/$/, "")}/chat/completions`;
+  const headers = {
+    "Content-Type": "application/json"
   };
-}
 
-async function createAnthropicResponse({ instructions, input }) {
-  const apiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+  if (options.provider !== "ollama") {
+    headers.Authorization = `Bearer ${options.apiKey}`;
+  }
+
+  if (options.provider === "openrouter") {
+    headers["HTTP-Referer"] = "https://github.com/Collab2Dev/Ghostline";
+    headers["X-Title"] = "Ghostline";
+  }
+
+  if (options.provider === "gemini") {
+    headers["x-goog-api-client"] = "collab2dev-ghostline/1.0.0";
+  }
+
+  const apiResponse = await fetch(url, {
     method: "POST",
-    headers: {
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json"
-    },
+    headers,
     body: JSON.stringify({
-      model: anthropicModel,
-      max_tokens: 120,
-      system: instructions,
+      model: options.model,
       messages: [
+        {
+          role: "system",
+          content: instructions
+        },
         {
           role: "user",
           content: input
         }
-      ]
+      ],
+      temperature: 0.4,
+      max_completion_tokens: 180
     })
   });
 
@@ -302,81 +348,15 @@ async function createAnthropicResponse({ instructions, input }) {
 
   if (!apiResponse.ok) {
     const message =
-      payload?.error?.message || "Anthropic request failed while rewriting the sentence.";
+      payload?.error?.message ||
+      `${providerPresets[options.provider]?.label || "Provider"} request failed while rewriting the sentence.`;
     throw new Error(message);
   }
 
-  return cleanSentence(extractAnthropicText(payload));
+  return cleanSentence(extractChatCompletionText(payload));
 }
 
-async function rewriteWithGemini(sentence) {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY is missing.");
-  }
-
-  const improvedText = await createGeminiResponse({
-    instructions: improveInstructions,
-    input: sentence
-  });
-
-  const finalText = await createGeminiResponse({
-    instructions: humanizeInstructions,
-    input: `Original sentence:\n${sentence}\n\nImproved sentence:\n${improvedText}`
-  });
-
-  return {
-    improvedText,
-    finalText
-  };
-}
-
-async function createGeminiResponse({ instructions, input }) {
-  const apiResponse = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "x-goog-api-key": process.env.GEMINI_API_KEY,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        system_instruction: {
-          parts: [
-            {
-              text: instructions
-            }
-          ]
-        },
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: input
-              }
-            ]
-          }
-        ],
-        generationConfig: {
-          maxOutputTokens: 120,
-          temperature: 0.3
-        }
-      })
-    }
-  );
-
-  const payload = await apiResponse.json();
-
-  if (!apiResponse.ok) {
-    const message =
-      payload?.error?.message || "Gemini request failed while rewriting the sentence.";
-    throw new Error(message);
-  }
-
-  return cleanSentence(extractGeminiText(payload));
-}
-
-async function rewriteWithCodex(sentence) {
+async function rewriteWithCodex(sentence, options = {}) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ghostline-codex-"));
   const outputPath = path.join(tempDir, "rewrite.json");
   const args = [
@@ -393,8 +373,10 @@ async function rewriteWithCodex(sentence) {
     outputPath
   ];
 
-  if (codexModel) {
-    args.push("--model", codexModel);
+  const model = options.model || codexModel;
+
+  if (model) {
+    args.push("--model", model);
   }
 
   args.push("-");
@@ -498,60 +480,25 @@ function formatCodexError(error) {
   return "Codex rewrite failed. Make sure the Codex CLI is installed and logged in, then try again.";
 }
 
-function extractOutputText(payload) {
-  if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
-    return payload.output_text;
+function extractChatCompletionText(payload) {
+  const content = payload?.choices?.[0]?.message?.content;
+
+  if (typeof content === "string" && content.trim()) {
+    return content;
   }
 
-  if (!Array.isArray(payload?.output)) {
-    throw new Error("OpenAI returned no output.");
+  if (Array.isArray(content)) {
+    const text = content
+      .map((item) => (typeof item?.text === "string" ? item.text : ""))
+      .join(" ")
+      .trim();
+
+    if (text) {
+      return text;
+    }
   }
 
-  const text = payload.output
-    .flatMap((item) => item?.content || [])
-    .filter((item) => typeof item?.text === "string")
-    .map((item) => item.text)
-    .join(" ")
-    .trim();
-
-  if (!text) {
-    throw new Error("OpenAI returned an empty sentence.");
-  }
-
-  return text;
-}
-
-function extractAnthropicText(payload) {
-  if (!Array.isArray(payload?.content)) {
-    throw new Error("Anthropic returned no output.");
-  }
-
-  const text = payload.content
-    .filter((item) => item?.type === "text" && typeof item?.text === "string")
-    .map((item) => item.text)
-    .join(" ")
-    .trim();
-
-  if (!text) {
-    throw new Error("Anthropic returned an empty sentence.");
-  }
-
-  return text;
-}
-
-function extractGeminiText(payload) {
-  const text = payload?.candidates
-    ?.flatMap((candidate) => candidate?.content?.parts || [])
-    .filter((part) => typeof part?.text === "string")
-    .map((part) => part.text)
-    .join(" ")
-    .trim();
-
-  if (!text) {
-    throw new Error("Gemini returned an empty sentence.");
-  }
-
-  return text;
+  throw new Error("The provider returned an empty sentence.");
 }
 
 function cleanSentence(value) {
@@ -560,6 +507,48 @@ function cleanSentence(value) {
     .replace(/\s{2,}/g, " ")
     .replace(/^["'“”]+|["'“”]+$/g, "")
     .trim();
+}
+
+function resolveProviderOptions(options = {}) {
+  const providerKey = normalizeProviderName(options.provider);
+
+  if (!providerKey || providerKey === "auto" || providerKey === "codex") {
+    throw new Error("Unsupported rewrite provider.");
+  }
+
+  const preset = providerPresets[providerKey];
+  const endpoint = normalizeValue(options.endpoint) || preset.endpoint;
+  const model = normalizeValue(options.model) || preset.defaultModel;
+  const apiKey =
+    normalizeValue(options.apiKey) ||
+    (preset.apiKeyEnv ? normalizeValue(process.env[preset.apiKeyEnv]) : "");
+
+  if (!endpoint) {
+    throw new Error(`No endpoint is configured for ${preset.label}.`);
+  }
+
+  if (!model) {
+    throw new Error(`Pick a model name for ${preset.label}.`);
+  }
+
+  if (!apiKey && providerKey !== "ollama") {
+    throw new Error(`Add an API key for ${preset.label}.`);
+  }
+
+  return {
+    provider: providerKey,
+    endpoint,
+    model,
+    apiKey: apiKey || "ollama"
+  };
+}
+
+function normalizeValue(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim();
 }
 
 async function serveStatic(request, response) {

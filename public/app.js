@@ -2,13 +2,17 @@ const editor = document.querySelector("#editor");
 const srStatus = document.querySelector("#srStatus");
 const wifiPill = document.querySelector("#wifiPill");
 const wifiTile = document.querySelector("#wifiTile");
+const providerSelect = document.querySelector("#providerSelect");
 const codexBridgeButton = document.querySelector("#codexBridgeButton");
 const codexFocus = document.querySelector("#codexFocus");
 const codexStatus = document.querySelector("#codexStatus");
+const providerStorageKey = "ghostline-provider";
 
 let isRewriting = false;
 let lastRewriteSnapshot = null;
 let lastFocusedSentence = "";
+
+hydrateProviderSelection();
 
 editor.addEventListener("keydown", async (event) => {
   if (event.key !== "Tab") {
@@ -39,7 +43,8 @@ editor.addEventListener("keydown", async (event) => {
     setBusyState(true);
     srStatus.textContent = "Rewriting current sentence.";
 
-    const rewrittenSentence = await rewriteSentence(sentenceRange.text.trim());
+    const rewrite = await rewriteSentence(sentenceRange.text.trim());
+    const rewrittenSentence = rewrite.finalText;
 
     if (!rewrittenSentence) {
       return;
@@ -59,9 +64,10 @@ editor.addEventListener("keydown", async (event) => {
     );
     lastRewriteSnapshot = {
       original: sentenceRange.text.trim(),
-      rewritten: rewrittenSentence
+      rewritten: rewrittenSentence,
+      provider: rewrite.provider
     };
-    srStatus.textContent = "Sentence rewritten.";
+    srStatus.textContent = `Sentence rewritten with ${getProviderLabel(rewrite.provider)}.`;
     updateCodexBridgeState();
   } catch (error) {
     console.error(error);
@@ -98,6 +104,7 @@ editor.addEventListener("keyup", updateCodexBridgeState);
 editor.addEventListener("mouseup", updateCodexBridgeState);
 document.addEventListener("selectionchange", updateCodexBridgeState);
 codexBridgeButton.addEventListener("click", handleCodexBridgeCopy);
+providerSelect.addEventListener("change", persistProviderSelection);
 
 updateCodexBridgeState();
 
@@ -114,7 +121,10 @@ async function rewriteSentence(sentence) {
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ sentence })
+    body: JSON.stringify({
+      sentence,
+      provider: getSelectedProvider()
+    })
   });
 
   const payload = await response.json();
@@ -123,7 +133,10 @@ async function rewriteSentence(sentence) {
     throw new Error(payload?.error || "Rewrite failed.");
   }
 
-  return typeof payload?.finalText === "string" ? payload.finalText.trim() : "";
+  return {
+    provider: typeof payload?.provider === "string" ? payload.provider : getSelectedProvider(),
+    finalText: typeof payload?.finalText === "string" ? payload.finalText.trim() : ""
+  };
 }
 
 async function handleCodexBridgeCopy() {
@@ -213,6 +226,9 @@ function buildCodexBridgePrompt({ draft, focusSentence, latestRewrite }) {
 
   if (latestRewrite) {
     sections.push("Latest Ghostline rewrite:");
+    if (latestRewrite.provider) {
+      sections.push(`Provider: ${getProviderLabel(latestRewrite.provider)}`);
+    }
     sections.push(`Original: ${latestRewrite.original}`);
     sections.push(`Rewritten: ${latestRewrite.rewritten}`);
     sections.push("");
@@ -232,6 +248,48 @@ function buildCodexBridgePrompt({ draft, focusSentence, latestRewrite }) {
 
 function cleanDraft(value) {
   return value.replace(/\u00a0/g, " ").replace(/\r\n?/g, "\n").trim();
+}
+
+function hydrateProviderSelection() {
+  const savedProvider = window.localStorage?.getItem(providerStorageKey);
+
+  if (isValidProvider(savedProvider)) {
+    providerSelect.value = savedProvider;
+  }
+}
+
+function persistProviderSelection() {
+  const provider = getSelectedProvider();
+  window.localStorage?.setItem(providerStorageKey, provider);
+  srStatus.textContent = `${getProviderLabel(provider)} selected for the next rewrite.`;
+}
+
+function getSelectedProvider() {
+  return isValidProvider(providerSelect?.value) ? providerSelect.value : "auto";
+}
+
+function isValidProvider(value) {
+  return ["auto", "codex", "openai", "anthropic", "gemini"].includes(value);
+}
+
+function getProviderLabel(provider) {
+  if (provider === "codex") {
+    return "Codex";
+  }
+
+  if (provider === "openai") {
+    return "OpenAI";
+  }
+
+  if (provider === "anthropic") {
+    return "Claude";
+  }
+
+  if (provider === "gemini") {
+    return "Gemini";
+  }
+
+  return "Auto";
 }
 
 async function copyTextToClipboard(text) {

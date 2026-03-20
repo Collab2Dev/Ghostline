@@ -16,6 +16,8 @@ const host = process.env.HOST || "127.0.0.1";
 const codexBinary =
   process.env.CODEX_BIN || (existsSync(bundledCodexBinary) ? bundledCodexBinary : "codex");
 const codexModel = process.env.CODEX_MODEL || process.env.OPENAI_MODEL || "";
+const anthropicModel = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+const geminiModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -64,16 +66,25 @@ async function handleRewrite(request, response) {
   }
 
   const sentence = typeof body?.sentence === "string" ? body.sentence.trim() : "";
+  const requestedProvider = normalizeProviderName(body?.provider);
 
   if (!sentence) {
     respondJson(response, 400, { error: "A sentence is required." });
     return;
   }
 
+  if (body?.provider != null && requestedProvider == null) {
+    respondJson(response, 400, {
+      error: "Provider must be one of auto, codex, openai, claude, anthropic, or gemini."
+    });
+    return;
+  }
+
   try {
-    const rewrite = await rewriteSentence(sentence);
+    const rewrite = await rewriteSentence(sentence, requestedProvider);
 
     respondJson(response, 200, {
+      provider: rewrite.provider,
       improvedText: rewrite.improvedText,
       finalText: rewrite.finalText
     });
@@ -85,20 +96,119 @@ async function handleRewrite(request, response) {
   }
 }
 
-async function rewriteSentence(sentence) {
-  try {
-    return await rewriteWithCodex(sentence);
-  } catch (error) {
-    if (process.env.OPENAI_API_KEY) {
-      console.warn("Codex rewrite failed, falling back to the OpenAI API.", error);
-      return rewriteWithOpenAI(sentence);
-    }
+async function rewriteSentence(sentence, requestedProvider) {
+  const providers = resolveProviderOrder(requestedProvider);
 
-    throw error;
+  if (providers.length === 0) {
+    throw new Error(
+      "No rewrite backend is configured. Use Codex, OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY."
+    );
   }
+
+  let lastError;
+
+  for (const provider of providers) {
+    try {
+      const rewrite = await rewriteWithProvider(provider, sentence);
+
+      return {
+        provider,
+        improvedText: rewrite.improvedText,
+        finalText: rewrite.finalText
+      };
+    } catch (error) {
+      lastError = error;
+      console.warn(`${provider} rewrite failed.`, error);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Rewrite failed.");
+}
+
+function resolveProviderOrder(requestedProvider) {
+  const configuredProvider = normalizeProviderName(process.env.GHOSTLINE_PROVIDER);
+  const preferredProvider = requestedProvider || configuredProvider || "auto";
+
+  if (preferredProvider !== "auto") {
+    return [preferredProvider];
+  }
+
+  const providers = [];
+
+  if (isCodexConfigured()) {
+    providers.push("codex");
+  }
+
+  if (process.env.OPENAI_API_KEY) {
+    providers.push("openai");
+  }
+
+  if (process.env.ANTHROPIC_API_KEY) {
+    providers.push("anthropic");
+  }
+
+  if (process.env.GEMINI_API_KEY) {
+    providers.push("gemini");
+  }
+
+  return providers;
+}
+
+function normalizeProviderName(value) {
+  if (value == null || value === "") {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized === "auto") {
+    return "auto";
+  }
+
+  if (normalized === "claude") {
+    return "anthropic";
+  }
+
+  if (["codex", "openai", "anthropic", "gemini"].includes(normalized)) {
+    return normalized;
+  }
+
+  return null;
+}
+
+function isCodexConfigured() {
+  return Boolean(process.env.CODEX_BIN) || existsSync(bundledCodexBinary);
+}
+
+function rewriteWithProvider(provider, sentence) {
+  if (provider === "codex") {
+    return rewriteWithCodex(sentence);
+  }
+
+  if (provider === "openai") {
+    return rewriteWithOpenAI(sentence);
+  }
+
+  if (provider === "anthropic") {
+    return rewriteWithAnthropic(sentence);
+  }
+
+  if (provider === "gemini") {
+    return rewriteWithGemini(sentence);
+  }
+
+  throw new Error("Unsupported rewrite provider.");
 }
 
 async function rewriteWithOpenAI(sentence) {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is missing.");
+  }
+
   const improvedText = await createOpenAIResponse({
     instructions: improveInstructions,
     input: sentence
@@ -144,6 +254,126 @@ async function createOpenAIResponse({ instructions, input }) {
   }
 
   return cleanSentence(extractOutputText(payload));
+}
+
+async function rewriteWithAnthropic(sentence) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error("ANTHROPIC_API_KEY is missing.");
+  }
+
+  const improvedText = await createAnthropicResponse({
+    instructions: improveInstructions,
+    input: sentence
+  });
+
+  const finalText = await createAnthropicResponse({
+    instructions: humanizeInstructions,
+    input: `Original sentence:\n${sentence}\n\nImproved sentence:\n${improvedText}`
+  });
+
+  return {
+    improvedText,
+    finalText
+  };
+}
+
+async function createAnthropicResponse({ instructions, input }) {
+  const apiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: anthropicModel,
+      max_tokens: 120,
+      system: instructions,
+      messages: [
+        {
+          role: "user",
+          content: input
+        }
+      ]
+    })
+  });
+
+  const payload = await apiResponse.json();
+
+  if (!apiResponse.ok) {
+    const message =
+      payload?.error?.message || "Anthropic request failed while rewriting the sentence.";
+    throw new Error(message);
+  }
+
+  return cleanSentence(extractAnthropicText(payload));
+}
+
+async function rewriteWithGemini(sentence) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is missing.");
+  }
+
+  const improvedText = await createGeminiResponse({
+    instructions: improveInstructions,
+    input: sentence
+  });
+
+  const finalText = await createGeminiResponse({
+    instructions: humanizeInstructions,
+    input: `Original sentence:\n${sentence}\n\nImproved sentence:\n${improvedText}`
+  });
+
+  return {
+    improvedText,
+    finalText
+  };
+}
+
+async function createGeminiResponse({ instructions, input }) {
+  const apiResponse = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": process.env.GEMINI_API_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [
+            {
+              text: instructions
+            }
+          ]
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: input
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          maxOutputTokens: 120,
+          temperature: 0.3
+        }
+      })
+    }
+  );
+
+  const payload = await apiResponse.json();
+
+  if (!apiResponse.ok) {
+    const message =
+      payload?.error?.message || "Gemini request failed while rewriting the sentence.";
+    throw new Error(message);
+  }
+
+  return cleanSentence(extractGeminiText(payload));
 }
 
 async function rewriteWithCodex(sentence) {
@@ -286,6 +516,39 @@ function extractOutputText(payload) {
 
   if (!text) {
     throw new Error("OpenAI returned an empty sentence.");
+  }
+
+  return text;
+}
+
+function extractAnthropicText(payload) {
+  if (!Array.isArray(payload?.content)) {
+    throw new Error("Anthropic returned no output.");
+  }
+
+  const text = payload.content
+    .filter((item) => item?.type === "text" && typeof item?.text === "string")
+    .map((item) => item.text)
+    .join(" ")
+    .trim();
+
+  if (!text) {
+    throw new Error("Anthropic returned an empty sentence.");
+  }
+
+  return text;
+}
+
+function extractGeminiText(payload) {
+  const text = payload?.candidates
+    ?.flatMap((candidate) => candidate?.content?.parts || [])
+    .filter((part) => typeof part?.text === "string")
+    .map((part) => part.text)
+    .join(" ")
+    .trim();
+
+  if (!text) {
+    throw new Error("Gemini returned an empty sentence.");
   }
 
   return text;

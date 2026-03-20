@@ -113,6 +113,24 @@
               </div>
             </section>
 
+            <section class="provider-card">
+              <p class="eyebrow">Rewrite Engine</p>
+              <label class="provider-label" for="providerSelect">
+                Choose which backend handles the rewrite.
+              </label>
+              <select class="provider-select" id="providerSelect">
+                <option value="auto">Auto</option>
+                <option value="codex">Codex Local</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Claude</option>
+                <option value="gemini">Gemini</option>
+              </select>
+              <p class="tile-meta">
+                Auto prefers Codex first, then OpenAI, Claude, and Gemini based on
+                whichever credentials are available.
+              </p>
+            </section>
+
             <section class="codex-card" aria-labelledby="codexBridgeTitle">
               <p class="eyebrow">Codex Bridge</p>
               <h2 class="codex-title" id="codexBridgeTitle">

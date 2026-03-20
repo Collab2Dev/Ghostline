@@ -20,6 +20,8 @@
     <string>Ghostline needs accessibility access to read and rewrite text in any app.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>Ghostline uses Apple Events to interact with other applications.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Ghostline uses screen recording access to understand on-screen writing context around the text you are editing.</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
 </dict>

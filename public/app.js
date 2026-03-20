@@ -9,7 +9,14 @@ const latestOriginal = document.querySelector("#latestOriginal");
 const latestRewritten = document.querySelector("#latestRewritten");
 const copyLastRewriteButton = document.querySelector("#copyLastRewrite");
 const rewriteFocusButton = document.querySelector("#rewriteFocusButton");
-const requestAccessButton = document.querySelector("#requestAccessButton");
+const requestAllPermissionsButton = document.querySelector("#requestAllPermissionsButton");
+const requestAccessibilityButton = document.querySelector("#requestAccessibilityButton");
+const requestAutomationButton = document.querySelector("#requestAutomationButton");
+const requestScreenRecordingButton = document.querySelector("#requestScreenRecordingButton");
+const accessibilityStatus = document.querySelector("#accessibilityStatus");
+const automationStatus = document.querySelector("#automationStatus");
+const screenRecordingStatus = document.querySelector("#screenRecordingStatus");
+const permissionSummary = document.querySelector("#permissionSummary");
 
 const settingsForm = document.querySelector("#settingsForm");
 const providerSelect = document.querySelector("#provider");
@@ -38,6 +45,11 @@ const providerPresets = {
 let isRewriting = false;
 let lastRewriteSnapshot = null;
 let currentFocusSentence = "";
+let permissionState = {
+  accessibility: false,
+  automation: false,
+  screenRecording: false
+};
 
 const settings = {
   provider: normalizeProviderKey(localStorage.getItem("ghostline_provider") || "codex"),
@@ -79,7 +91,10 @@ settingsForm.addEventListener("input", () => {
 });
 
 rewriteFocusButton.addEventListener("click", () => {
-  if (!window.webkit?.messageHandlers?.ghostline) {
+  if (!postToGhostline({
+    action: "rewriteFocused",
+    options: buildRewriteOptions()
+  })) {
     showToast("Focused rewriting is only available inside the macOS app.");
     return;
   }
@@ -87,11 +102,6 @@ rewriteFocusButton.addEventListener("click", () => {
   isRewriting = true;
   updateStatus();
   srStatus.textContent = "Rewriting focused sentence.";
-
-  window.webkit.messageHandlers.ghostline.postMessage({
-    action: "rewriteFocused",
-    options: buildRewriteOptions()
-  });
 });
 
 copyLastRewriteButton.addEventListener("click", async () => {
@@ -104,27 +114,34 @@ copyLastRewriteButton.addEventListener("click", async () => {
   showToast("Copied latest rewrite.");
 });
 
-requestAccessButton.addEventListener("click", () => {
-  if (!window.webkit?.messageHandlers?.ghostline) {
-    showToast("Accessibility requests are only available inside the macOS app.");
+requestAllPermissionsButton.addEventListener("click", () => {
+  if (!postToGhostline({ action: "requestPermissions" })) {
+    showToast("Permission requests are only available inside the macOS app.");
     return;
   }
 
-  window.webkit.messageHandlers.ghostline.postMessage({ action: "requestAccess" });
+  showToast("Ghostline is requesting macOS permissions.");
 });
 
+requestAccessibilityButton.addEventListener("click", () => requestPermission("accessibility"));
+requestAutomationButton.addEventListener("click", () => requestPermission("automation"));
+requestScreenRecordingButton.addEventListener("click", () => requestPermission("screenRecording"));
+
 updateStatus();
+updatePermissionUI();
 sendPreferences();
 
 window.onGhostlineContext = (payload) => {
   const context = typeof payload === "string" ? JSON.parse(payload) : payload;
   currentFocusSentence = context.sentence || "";
+  permissionState = normalizePermissions(context.permissions);
+  updatePermissionUI();
 
   if (currentFocusSentence) {
     codexFocus.textContent = currentFocusSentence;
     codexFocus.classList.remove("empty");
   } else {
-    codexFocus.textContent = context.hasAccess
+    codexFocus.textContent = permissionState.accessibility
       ? "Click into some text and Ghostline will follow the sentence under your caret."
       : "Grant Accessibility access so Ghostline can read the sentence under your caret.";
     codexFocus.classList.add("empty");
@@ -132,12 +149,12 @@ window.onGhostlineContext = (payload) => {
 
   focusAppLabel.textContent = context.appName
     ? `Following text in ${context.appName}.`
-    : context.hasAccess
+    : permissionState.accessibility
       ? "Focus a text field in any app."
       : "Accessibility access is required.";
 
   srStatus.textContent = context.status || "Ready for a sentence.";
-  rewriteFocusButton.disabled = !context.hasAccess || !currentFocusSentence || isRewriting;
+  updateStatus();
 };
 
 window.onGhostlineResult = (result) => {
@@ -145,7 +162,7 @@ window.onGhostlineResult = (result) => {
   lastRewriteSnapshot = {
     original: payload.originalText || currentFocusSentence || "Unknown",
     rewritten: payload.finalText || "",
-    provider: payload.provider || settings.provider
+    provider: normalizeProviderKey(payload.provider || settings.provider)
   };
 
   latestOriginal.textContent = lastRewriteSnapshot.original;
@@ -159,22 +176,20 @@ window.onGhostlineResult = (result) => {
 
 window.onGhostlineError = (message) => {
   isRewriting = false;
-  rewriteStatus.textContent = "Error";
-  rewriteIndicator.className = "status-dot error";
   srStatus.textContent = "Rewrite failed.";
+  updateStatus("Error");
   showToast(typeof message === "string" ? message : "Rewrite failed.");
-  rewriteFocusButton.disabled = !currentFocusSentence;
 };
 
 function buildRewriteOptions() {
   const preset = providerPresets[settings.provider] || providerPresets.custom;
+
   return {
     provider: settings.provider,
     model: settings.customModel || preset.defaultModel,
     apiKey: settings.apiKey,
     endpoint: settings.endpoint || preset.endpoint || "",
-    tone: settings.tone,
-    yoloMode: String(settings.yoloMode)
+    tone: settings.tone
   };
 }
 
@@ -186,19 +201,74 @@ function sendPreferences() {
   window.webkit.messageHandlers.ghostline.postMessage({
     action: "preferences",
     preferences: {
+      ...buildRewriteOptions(),
       displayMode: settings.displayMode,
       yoloMode: String(settings.yoloMode)
     }
   });
 }
 
-function updateStatus() {
+function requestPermission(permission) {
+  if (!postToGhostline({ action: "requestPermission", permission })) {
+    showToast("Permission requests are only available inside the macOS app.");
+    return;
+  }
+
+  showToast(`Requesting ${labelForPermission(permission)} access.`);
+}
+
+function postToGhostline(message) {
+  if (!window.webkit?.messageHandlers?.ghostline) {
+    return false;
+  }
+
+  window.webkit.messageHandlers.ghostline.postMessage(message);
+  return true;
+}
+
+function updateStatus(forcedState = "") {
   providerStatus.textContent = settings.customModel || labelForProviderKey(settings.provider);
-  displayStatus.textContent = capitalize(settings.displayMode);
-  rewriteStatus.textContent = isRewriting ? "Rewriting" : "Ready";
-  rewriteIndicator.className = `status-dot ${isRewriting ? "polishing" : "live"}`;
+  displayStatus.textContent = `${capitalize(settings.displayMode)}${settings.yoloMode ? " + YOLO" : ""}`;
+  rewriteStatus.textContent = forcedState || (isRewriting ? "Rewriting" : settings.yoloMode ? "Auto" : "Ready");
+  rewriteIndicator.className = `status-dot ${forcedState === "Error" ? "error" : isRewriting ? "polishing" : "live"}`;
   copyLastRewriteButton.disabled = !lastRewriteSnapshot?.rewritten;
-  rewriteFocusButton.disabled = isRewriting || !currentFocusSentence;
+  rewriteFocusButton.disabled = isRewriting || !currentFocusSentence || !permissionState.accessibility;
+}
+
+function updatePermissionUI() {
+  updatePermissionTile(
+    requestAccessibilityButton,
+    accessibilityStatus,
+    permissionState.accessibility
+  );
+  updatePermissionTile(requestAutomationButton, automationStatus, permissionState.automation);
+  updatePermissionTile(
+    requestScreenRecordingButton,
+    screenRecordingStatus,
+    permissionState.screenRecording
+  );
+
+  const allGranted =
+    permissionState.accessibility && permissionState.automation && permissionState.screenRecording;
+
+  requestAllPermissionsButton.disabled = allGranted;
+  permissionSummary.textContent = allGranted
+    ? "All permissions are granted. Ghostline can now follow text, automate desktop flows, and prepare richer screen-aware behavior."
+    : "Accessibility lets Ghostline rewrite in place. Automation and Screen Recording make the native app feel more hands-off and complete.";
+}
+
+function updatePermissionTile(button, statusNode, granted) {
+  statusNode.textContent = granted ? "Granted" : "Needed";
+  button.classList.toggle("is-granted", granted);
+  button.setAttribute("aria-pressed", String(granted));
+}
+
+function normalizePermissions(permissions) {
+  return {
+    accessibility: Boolean(permissions?.accessibility),
+    automation: Boolean(permissions?.automation),
+    screenRecording: Boolean(permissions?.screenRecording)
+  };
 }
 
 async function copyText(text) {
@@ -239,6 +309,22 @@ function normalizeProviderKey(value) {
 
 function labelForProviderKey(provider) {
   return providerPresets[provider]?.label || "Ghostline";
+}
+
+function labelForPermission(permission) {
+  if (permission === "accessibility") {
+    return "Accessibility";
+  }
+
+  if (permission === "automation") {
+    return "Automation";
+  }
+
+  if (permission === "screenRecording") {
+    return "Screen Recording";
+  }
+
+  return "Ghostline";
 }
 
 function capitalize(value) {

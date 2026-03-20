@@ -11,7 +11,8 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">Ghostline</p>
-          <h1>Writing Assistant</h1>
+          <h1>Desktop Writing Assistant</h1>
+          <p class="topbar-copy">Keep the webpage, but let the Mac app follow, polish, and automate around it.</p>
         </div>
         <div class="status-cluster">
           <div class="status-pill">
@@ -19,7 +20,7 @@
             <strong id="providerStatus">Codex</strong>
           </div>
           <div class="status-pill">
-            <span>Mode</span>
+            <span>Panel</span>
             <strong id="displayStatus">Follow</strong>
           </div>
           <div class="status-pill">
@@ -30,17 +31,50 @@
       </header>
 
       <main class="stack">
+        <section class="card permissions-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Permissions</p>
+              <h2>Ask macOS for the access Ghostline needs.</h2>
+            </div>
+            <button class="primary-button" id="requestAllPermissionsButton" type="button">
+              Request All
+            </button>
+          </div>
+          <p class="assist-copy" id="permissionSummary">
+            Accessibility lets Ghostline rewrite text in place. Automation and Screen Recording unlock deeper desktop behavior.
+          </p>
+          <div class="permission-grid">
+            <button class="permission-tile" id="requestAccessibilityButton" type="button">
+              <span class="permission-name">Accessibility</span>
+              <strong class="permission-status" id="accessibilityStatus">Needed</strong>
+              <small>Read the focused sentence and replace it in place.</small>
+            </button>
+            <button class="permission-tile" id="requestAutomationButton" type="button">
+              <span class="permission-name">Automation</span>
+              <strong class="permission-status" id="automationStatus">Needed</strong>
+              <small>Talk to system apps when Ghostline needs deeper desktop control.</small>
+            </button>
+            <button class="permission-tile" id="requestScreenRecordingButton" type="button">
+              <span class="permission-name">Screen Recording</span>
+              <strong class="permission-status" id="screenRecordingStatus">Needed</strong>
+              <small>Give Ghostline richer awareness of what is on screen around your writing.</small>
+            </button>
+          </div>
+        </section>
+
         <section class="card focus-card">
           <div class="card-head">
             <div>
               <p class="eyebrow">Focused Sentence</p>
               <h2>What Ghostline will rewrite</h2>
             </div>
-            <button class="ghost-button" id="requestAccessButton" type="button">Accessibility</button>
           </div>
           <p id="focusAppLabel" class="meta-line">Focus a text field in any app.</p>
           <div class="focus-box">
-            <p id="codexFocus" class="focus-text empty">Click into some text and Ghostline will follow the sentence under your caret.</p>
+            <p id="codexFocus" class="focus-text empty">
+              Click into some text and Ghostline will follow the sentence under your caret.
+            </p>
           </div>
           <p id="srStatus" class="assist-copy" aria-live="polite">Ready for a sentence.</p>
         </section>
@@ -73,10 +107,14 @@
             </label>
           </div>
           <div class="action-row">
-            <button class="primary-button" id="rewriteFocusButton" type="button">Rewrite Focused Sentence</button>
+            <button class="primary-button" id="rewriteFocusButton" type="button">
+              Rewrite Focused Sentence
+            </button>
             <button class="secondary-button" id="copyLastRewrite" type="button">Copy Result</button>
           </div>
-          <p class="assist-copy">Shortcut: <kbd>Control</kbd> + <kbd>Option</kbd> + <kbd>G</kbd></p>
+          <p class="assist-copy">
+            Shortcut: <kbd>Control</kbd> + <kbd>Option</kbd> + <kbd>G</kbd>. Enable YOLO to let Ghostline auto-polish after a pause.
+          </p>
         </section>
 
         <section class="card result-card">
@@ -93,7 +131,9 @@
             </div>
             <div class="compare-block active">
               <span class="compare-label">Ghostline</span>
-              <p id="latestRewritten">Your last rewrite will appear here after Ghostline updates the sentence in place.</p>
+              <p id="latestRewritten">
+                Your last rewrite will appear here after Ghostline updates the sentence in place.
+              </p>
             </div>
           </div>
         </section>
@@ -146,7 +186,7 @@
             <label class="toggle-row">
               <span>
                 <strong>YOLO Mode</strong>
-                <small>Auto-run after a pause when supported.</small>
+                <small>Auto-run after a pause in the native macOS app.</small>
               </span>
               <input id="yoloMode" type="checkbox" />
             </label>

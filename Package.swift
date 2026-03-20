@@ -16,6 +16,10 @@ let package = Package(
   targets: [
     .executableTarget(
       name: "GhostlineDesktop",
+      exclude: [
+        "AppIcon.icns",
+        "Info.plist"
+      ],
       resources: [
         .copy("../../public")
       ]

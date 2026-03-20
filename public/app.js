@@ -203,13 +203,30 @@ function setBusyState(isBusy) {
 }
 
 async function rewriteSentence(sentence) {
-  const body = { sentence };
+  const options = {};
   if (settings.model !== "codex") {
-    body.model = settings.model === "openai" ? "gpt-4o" : settings.model; // Use a reasonable default for OpenAI if not specified
-    if (settings.apiKey) body.apiKey = settings.apiKey;
-    if (settings.endpoint) body.endpoint = settings.endpoint;
+    options.model = settings.model === "openai" ? "gpt-4o" : settings.model;
+    if (settings.apiKey) options.apiKey = settings.apiKey;
+    if (settings.endpoint) options.endpoint = settings.endpoint;
   }
 
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ghostline) {
+    return new Promise((resolve, reject) => {
+        window.onGhostlineResult = (result) => {
+            resolve(result.finalText.trim());
+        };
+        window.onGhostlineError = (error) => {
+            reject(new Error(error));
+        };
+        window.webkit.messageHandlers.ghostline.postMessage({
+            action: "rewrite",
+            sentence,
+            options
+        });
+    });
+  }
+
+  const body = { sentence, ...options };
   const response = await fetch("/api/rewrite", {
     method: "POST",
     headers: {

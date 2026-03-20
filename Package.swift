@@ -17,8 +17,7 @@ let package = Package(
     .executableTarget(
       name: "GhostlineDesktop",
       resources: [
-        .copy("../../public"),
-        .copy("../../server.mjs")
+        .copy("../../public")
       ]
     )
   ]

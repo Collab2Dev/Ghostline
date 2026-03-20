@@ -14,7 +14,6 @@ app:
 	cp $(BUILD_PATH) $(MACOS)/
 	cp Sources/GhostlineDesktop/Info.plist $(CONTENTS)/
 	cp Sources/GhostlineDesktop/AppIcon.icns $(RESOURCES)/
-	cp server.mjs $(RESOURCES)/
 	cp -R public $(RESOURCES)/
 	codesign --deep --force --sign - $(APP_BUNDLE)
 	zip -r Ghostline-mac.zip $(APP_BUNDLE)

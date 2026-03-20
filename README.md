@@ -13,7 +13,7 @@ Put the caret inside a sentence, press `Tab`, and the app will:
 
 - **In-place Rewriting:** No popups or flashes. The sentence updates directly where you type.
 - **YOLO Mode:** Optional auto-rewrite after a 1.5s pause or on paragraph breaks.
-- **Provider Choice:** Use local Codex (default), OpenAI API, or any custom OpenAI-compatible endpoint (like Ollama).
+- **Provider Choice:** Use local Codex, OpenAI, Claude, Gemini, Kimi, Qwen, OpenRouter, Groq, DeepSeek, Ollama, or any custom OpenAI-compatible endpoint.
 - **Native macOS App:** A lightweight menu bar companion that works in any app via Accessibility APIs.
 - **Shimmer Effect:** Visual feedback during rewriting so you know exactly what is being processed.
 
@@ -60,12 +60,13 @@ swift run GhostlineDesktop
 ## Configuration
 
 Settings are managed directly in the Ghostline Editor's gear icon menu:
-- **Model:** Codex (Default) / OpenAI / Custom.
+- **Provider:** Codex / OpenAI / Claude / Gemini / Kimi / Qwen / OpenRouter / Groq / DeepSeek / Ollama / Custom.
+- **Model Name:** Override the preset default for any provider.
 - **API Key:** Stored locally in your browser.
-- **Endpoint:** Support for custom base URLs (e.g., `http://localhost:11434/v1`).
+- **Endpoint:** Override the provider default or point Ghostline at any compatible base URL.
 
 ## Notes
 
 - **Default backend:** Local Codex CLI (requires `codex login`).
-- **OpenAI Fallback:** If you provide an API key, Ghostline can fallback to OpenAI if Codex is unavailable.
+- **Multi-provider routing:** Claude uses Anthropic's OpenAI SDK compatibility layer; Gemini uses Google's OpenAI compatibility endpoint; Kimi, Qwen, OpenRouter, Groq, DeepSeek, Ollama, and custom providers use compatible chat-completions endpoints.
 - **Local Privacy:** Your writing is processed according to your chosen provider's privacy policy. The "Codex Bridge" is local-only.

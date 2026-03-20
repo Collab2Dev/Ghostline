@@ -7,26 +7,42 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="aurora aurora-one"></div>
-    <div class="aurora aurora-two"></div>
-    <div class="noise"></div>
+    <div class="page-glow glow-left"></div>
+    <div class="page-glow glow-right"></div>
+    <div class="page-grid" aria-hidden="true"></div>
 
     <main class="app-shell">
       <section class="window">
         <header class="window-bar">
-          <div class="traffic-lights" aria-hidden="true">
-            <span class="light close"></span>
-            <span class="light minimize"></span>
-            <span class="light expand"></span>
+          <div class="window-brand">
+            <div class="traffic-lights" aria-hidden="true">
+              <span class="light close"></span>
+              <span class="light minimize"></span>
+              <span class="light expand"></span>
+            </div>
+            <div class="window-copy">
+              <p class="eyebrow">Ghostline</p>
+              <p class="window-label">Invisible polish for the sentence under your caret.</p>
+            </div>
           </div>
 
-          <div class="window-copy">
-            <p class="eyebrow">Ghostline</p>
-            <p class="window-label">Silent sentence rewrite</p>
+          <div class="top-status" aria-label="Session Status">
+            <div class="status-chip">
+              <span>Provider</span>
+              <strong id="providerStatus">Codex</strong>
+            </div>
+            <div class="status-chip">
+              <span>Mode</span>
+              <strong id="yoloStatus">Manual</strong>
+            </div>
+            <div class="status-chip status-chip-live">
+              <span>Rewrite</span>
+              <strong id="rewriteStatus">Ready</strong>
+            </div>
           </div>
 
           <button class="settings-trigger" id="settingsTrigger" aria-label="Open Settings" type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
@@ -36,112 +52,160 @@
         <div id="settingsPanel" class="settings-panel sr-only">
           <div class="settings-content">
             <header class="settings-header">
-              <h2>Settings</h2>
+              <div>
+                <p class="eyebrow">Settings</p>
+                <h2>Rewrite pipeline</h2>
+              </div>
               <button id="closeSettings" class="close-settings" type="button">Close</button>
             </header>
+
             <form id="settingsForm">
-              <div class="field">
+              <div class="field field-toggle">
                 <label class="toggle">
-                  <input type="checkbox" id="yoloMode">
+                  <input type="checkbox" id="yoloMode" />
                   <span class="slider"></span>
-                  <span class="label-text">YOLO Mode (Auto-rewrite)</span>
+                  <span class="label-text">YOLO Mode</span>
                 </label>
+                <p class="field-note">Auto-rewrite after a 1.5s pause and on paragraph breaks.</p>
               </div>
+
               <div class="field">
-                <label for="model">Model</label>
-                <select id="model">
-                  <option value="codex">Codex (Default)</option>
+                <label for="provider">Provider</label>
+                <select id="provider">
+                  <option value="codex">Codex</option>
                   <option value="openai">OpenAI API</option>
-                  <option value="custom">Custom Endpoint</option>
+                  <option value="claude">Claude</option>
+                  <option value="gemini">Gemini</option>
+                  <option value="kimi">Kimi</option>
+                  <option value="qwen">Qwen</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="groq">Groq</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="ollama">Ollama</option>
+                  <option value="custom">Custom Compatible</option>
                 </select>
               </div>
+
+              <div class="field">
+                <label for="customModel">Model Name</label>
+                <input type="text" id="customModel" list="modelSuggestions" placeholder="gpt-5-mini / claude-sonnet-4-0 / gemini-2.5-flash / kimi-latest / qwen-plus" />
+              </div>
+
+              <datalist id="modelSuggestions">
+                <option value="gpt-5-mini"></option>
+                <option value="claude-sonnet-4-0"></option>
+                <option value="gemini-2.5-flash"></option>
+                <option value="kimi-latest"></option>
+                <option value="moonshot-v1-8k"></option>
+                <option value="qwen-plus"></option>
+                <option value="qwen-max"></option>
+                <option value="deepseek-chat"></option>
+                <option value="llama3.1:8b"></option>
+              </datalist>
+
               <div class="field">
                 <label for="apiKey">API Key</label>
-                <input type="password" id="apiKey" placeholder="sk-...">
+                <input type="password" id="apiKey" placeholder="sk-..." />
               </div>
+
               <div class="field">
-                <label for="endpoint">Custom Endpoint URL</label>
-                <input type="url" id="endpoint" placeholder="http://localhost:11434/v1">
+                <label for="endpoint">Endpoint URL</label>
+                <input type="url" id="endpoint" placeholder="Leave blank for the provider default, or set your own compatible base URL." />
               </div>
-              <p class="settings-hint">Stored locally in your browser.</p>
+
+              <p class="settings-hint">Settings stay local on this machine.</p>
             </form>
           </div>
         </div>
 
-        <div id="toast" class="toast sr-only"></div>
+        <div id="toast" class="toast sr-only" role="status" aria-live="polite"></div>
 
         <div class="workspace">
-          <section class="editor-panel">
-            <div class="panel-copy">
-              <p class="eyebrow">Invisible Tab Flow</p>
-              <h1>Press Tab and let the sentence rewrite itself.</h1>
+          <section class="editor-stage">
+            <div class="hero-copy">
+              <p class="eyebrow">Grammarly-style silent flow</p>
+              <h1>Polish the exact sentence you are inside, then keep moving.</h1>
               <p class="lede">
-                Put your caret inside any sentence. Ghostline improves it,
-                routes it through a humanizer pass, and replaces the original
-                line directly with no popup, highlight, or correction bubble.
+                No correction cards. No inline clutter. Just a cleaner sentence dropped back into the draft with the rest of your writing intact.
               </p>
             </div>
 
-            <div class="editor-frame">
-              <div
-                id="editor"
-                class="editor"
-                contenteditable="true"
-                spellcheck="false"
-                autocapitalize="sentences"
-                data-placeholder="Drop in a rough paragraph, place the caret inside a sentence, and press Tab."
-              >I think this launch plan is promising, but the paragraph still sounds too stiff. Put your cursor in a sentence and tap Tab to make it cleaner and more human. Nothing flashes or pops up when the rewrite lands.</div>
+            <div class="editor-shell">
+              <div class="editor-toolbar">
+                <div>
+                  <p class="toolbar-label">Draft Surface</p>
+                  <p class="toolbar-subtitle">Press <kbd>Tab</kbd> to rewrite the active sentence.</p>
+                </div>
+                <button class="secondary-button" id="copyDraftButton" type="button">Copy Draft</button>
+              </div>
+
+              <div class="editor-frame">
+                <div
+                  id="editor"
+                  class="editor"
+                  contenteditable="true"
+                  spellcheck="false"
+                  autocapitalize="sentences"
+                  data-placeholder="Paste a rough paragraph, place the caret inside a sentence, and press Tab."
+                >This launch plan has good bones, but the paragraph still feels colder than it should. Put your cursor in a sentence and tap Tab to make it cleaner, calmer, and more human. Ghostline keeps the rest of the draft stable while it rewrites in place.</div>
+              </div>
+
+              <div class="editor-footer">
+                <p class="hint">Tab rewrites one sentence. Enter triggers the same pass when YOLO Mode is on.</p>
+                <div id="srStatus" class="live-note" aria-live="polite">Ready for a sentence.</div>
+              </div>
             </div>
-
-            <p class="hint">
-              Tab rewrites the sentence under the caret. The replacement happens
-              in place and keeps the rest of your draft untouched.
-            </p>
-
-            <div id="srStatus" class="sr-only" aria-live="polite"></div>
           </section>
 
-          <aside class="control-panel">
-            <section class="process-card">
-              <p class="eyebrow">Sentence Bridge</p>
-              <div class="process-step">
-                <span>01</span>
-                <p>Improve the sentence without changing what you meant.</p>
+          <aside class="insight-rail">
+            <section class="card lens-card">
+              <p class="eyebrow">Focus Lens</p>
+              <h2>Sentence under the caret</h2>
+              <p class="focus-line" id="codexFocus">Place the caret inside a sentence to aim Ghostline.</p>
+            </section>
+
+            <section class="card rewrite-card">
+              <div class="card-header">
+                <div>
+                  <p class="eyebrow">Latest Rewrite</p>
+                  <h2>Before and after</h2>
+                </div>
+                <button class="secondary-button" id="copyLastRewrite" type="button">Copy Rewrite</button>
               </div>
-              <div class="process-step">
-                <span>02</span>
-                <p>Bridge the result into the humanizer and smooth the voice.</p>
+              <div class="rewrite-block">
+                <p class="rewrite-label">Original</p>
+                <p class="rewrite-copy" id="latestOriginal">No rewrite yet.</p>
               </div>
-              <div class="process-step">
-                <span>03</span>
-                <p>Replace the original sentence directly, with no visual noise.</p>
+              <div class="rewrite-block rewrite-block-accent">
+                <p class="rewrite-label">Ghostline</p>
+                <p class="rewrite-copy" id="latestRewritten">When you rewrite a sentence, the polished version appears here.</p>
               </div>
             </section>
 
-            <section class="codex-card" aria-labelledby="codexBridgeTitle">
+            <section class="card handoff-card" aria-labelledby="codexBridgeTitle">
               <p class="eyebrow">Codex Bridge</p>
-              <h2 class="codex-title" id="codexBridgeTitle">
-                Hand the draft off without losing the sentence context.
-              </h2>
+              <h2 id="codexBridgeTitle">Package the active sentence with the full draft.</h2>
               <p class="tile-meta">
-                Copy a Codex-ready prompt built from the current draft, the sentence
-                under your caret, and the latest Ghostline rewrite.
+                Copy a ready-to-run handoff prompt with the draft, the current focus sentence, and the last Ghostline rewrite.
               </p>
+              <button class="primary-button" id="codexBridgeButton" type="button">Copy Codex Handoff</button>
+              <p class="card-status" id="codexStatus" aria-live="polite">Ready when you are.</p>
+            </section>
 
-              <div class="codex-preview">
-                <p class="codex-label">Focus Sentence</p>
-                <p class="codex-focus" id="codexFocus">
-                  Place the caret inside a sentence to aim the handoff.
-                </p>
+            <section class="card shortcuts-card">
+              <p class="eyebrow">Workflow</p>
+              <div class="shortcut-row">
+                <span>Tab</span>
+                <p>Rewrite the sentence under the caret.</p>
               </div>
-
-              <button class="codex-button" id="codexBridgeButton" type="button">
-                Copy Codex Handoff
-              </button>
-
-              <p class="codex-status" id="codexStatus" aria-live="polite">
-                Ready when you are.
-              </p>
+              <div class="shortcut-row">
+                <span>⌃⌥G</span>
+                <p>Run Ghostline from the menu bar in any app.</p>
+              </div>
+              <div class="shortcut-row">
+                <span>YOLO</span>
+                <p>Auto-run after a pause when you want a quieter loop.</p>
+              </div>
             </section>
           </aside>
         </div>

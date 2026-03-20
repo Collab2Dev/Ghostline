@@ -3,13 +3,21 @@ const srStatus = document.querySelector("#srStatus");
 const codexBridgeButton = document.querySelector("#codexBridgeButton");
 const codexFocus = document.querySelector("#codexFocus");
 const codexStatus = document.querySelector("#codexStatus");
+const providerStatus = document.querySelector("#providerStatus");
+const yoloStatus = document.querySelector("#yoloStatus");
+const rewriteStatus = document.querySelector("#rewriteStatus");
+const latestOriginal = document.querySelector("#latestOriginal");
+const latestRewritten = document.querySelector("#latestRewritten");
+const copyLastRewriteButton = document.querySelector("#copyLastRewrite");
+const copyDraftButton = document.querySelector("#copyDraftButton");
 
 const settingsTrigger = document.querySelector("#settingsTrigger");
 const settingsPanel = document.querySelector("#settingsPanel");
 const closeSettings = document.querySelector("#closeSettings");
 const settingsForm = document.querySelector("#settingsForm");
 const yoloModeInput = document.querySelector("#yoloMode");
-const modelSelect = document.querySelector("#model");
+const providerSelect = document.querySelector("#provider");
+const customModelInput = document.querySelector("#customModel");
 const apiKeyInput = document.querySelector("#apiKey");
 const endpointInput = document.querySelector("#endpoint");
 const toast = document.querySelector("#toast");
@@ -19,16 +27,17 @@ let lastRewriteSnapshot = null;
 let lastFocusedSentence = "";
 let yoloTimer = null;
 
-// Settings initialization
 const settings = {
   yoloMode: localStorage.getItem("ghostline_yolo") === "true",
-  model: localStorage.getItem("ghostline_model") || "codex",
+  provider: localStorage.getItem("ghostline_provider") || localStorage.getItem("ghostline_model") || "codex",
+  customModel: localStorage.getItem("ghostline_customModel") || "",
   apiKey: localStorage.getItem("ghostline_apiKey") || "",
   endpoint: localStorage.getItem("ghostline_endpoint") || ""
 };
 
 yoloModeInput.checked = settings.yoloMode;
-modelSelect.value = settings.model;
+providerSelect.value = settings.provider;
+customModelInput.value = settings.customModel;
 apiKeyInput.value = settings.apiKey;
 endpointInput.value = settings.endpoint;
 
@@ -37,130 +46,30 @@ closeSettings.addEventListener("click", () => settingsPanel.classList.add("sr-on
 
 settingsForm.addEventListener("input", () => {
   settings.yoloMode = yoloModeInput.checked;
-  settings.model = modelSelect.value;
-  settings.apiKey = apiKeyInput.value;
-  settings.endpoint = endpointInput.value;
+  settings.provider = providerSelect.value;
+  settings.customModel = customModelInput.value.trim();
+  settings.apiKey = apiKeyInput.value.trim();
+  settings.endpoint = endpointInput.value.trim();
 
-  localStorage.setItem("ghostline_yolo", settings.yoloMode);
-  localStorage.setItem("ghostline_model", settings.model);
+  localStorage.setItem("ghostline_yolo", String(settings.yoloMode));
+  localStorage.setItem("ghostline_provider", settings.provider);
+  localStorage.setItem("ghostline_model", settings.provider);
+  localStorage.setItem("ghostline_customModel", settings.customModel);
   localStorage.setItem("ghostline_apiKey", settings.apiKey);
   localStorage.setItem("ghostline_endpoint", settings.endpoint);
+
+  updateStatusChips();
 });
 
-async function rewriteCurrentSentence() {
-  if (isRewriting) return;
-
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || !editor.contains(selection.anchorNode)) {
-    return;
+document.addEventListener("click", (event) => {
+  if (
+    !settingsPanel.classList.contains("sr-only") &&
+    !settingsPanel.contains(event.target) &&
+    !settingsTrigger.contains(event.target)
+  ) {
+    settingsPanel.classList.add("sr-only");
   }
-
-  const content = editor.textContent || "";
-  const caretOffset = getCaretOffset(editor);
-  const sentenceRange = findSentenceRange(content, caretOffset);
-
-  if (!sentenceRange || !sentenceRange.text.trim()) {
-    return;
-  }
-
-  // Find the text node(s) corresponding to the sentence range
-  const range = document.createRange();
-  let startNode = null, startOffset = 0;
-  let endNode = null, endOffset = 0;
-  
-  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
-  let currentPos = 0;
-  let node = walker.nextNode();
-  while (node) {
-    const nextPos = currentPos + node.textContent.length;
-    if (!startNode && sentenceRange.start >= currentPos && sentenceRange.start < nextPos) {
-      startNode = node;
-      startOffset = sentenceRange.start - currentPos;
-    }
-    if (sentenceRange.end > currentPos && sentenceRange.end <= nextPos) {
-      endNode = node;
-      endOffset = sentenceRange.end - currentPos;
-      break;
-    }
-    currentPos = nextPos;
-    node = walker.nextNode();
-  }
-
-  if (!startNode || !endNode) return;
-
-  range.setStart(startNode, startOffset);
-  range.setEnd(endNode, endOffset);
-
-  // Wrap the sentence in a shimmer span
-  const span = document.createElement("span");
-  span.className = "shimmer";
-  try {
-    range.surroundContents(span);
-  } catch (e) {
-    // If surroundContents fails (complex selection), fallback to simpler replacement
-    console.warn("Complex selection, skipping shimmer effect", e);
-  }
-
-  try {
-    setBusyState(true);
-    srStatus.textContent = "Rewriting current sentence.";
-
-    const rewrittenSentence = await rewriteSentence(sentenceRange.text.trim());
-
-    if (!rewrittenSentence) {
-      if (span.parentNode) {
-        // Remove span and restore text if possible
-        const text = span.textContent;
-        span.parentNode.replaceChild(document.createTextNode(text), span);
-      }
-      return;
-    }
-
-    const finalResult = sentenceRange.leadingWhitespace + rewrittenSentence + sentenceRange.trailingWhitespace;
-    
-    if (span.parentNode) {
-      span.textContent = finalResult;
-      span.className = ""; // Remove shimmer
-      // Un-wrap the span to keep it clean
-      const textNode = document.createTextNode(finalResult);
-      span.parentNode.replaceChild(textNode, span);
-      
-      // Reset caret at the end of the new text
-      const newSelection = window.getSelection();
-      const newRange = document.createRange();
-      newRange.setStartAfter(textNode);
-      newRange.collapse(true);
-      newSelection.removeAllRanges();
-      newSelection.addRange(newRange);
-    } else {
-      // Fallback
-      editor.textContent = content.slice(0, sentenceRange.start) + finalResult + content.slice(sentenceRange.end);
-    }
-
-    lastRewriteSnapshot = {
-      original: sentenceRange.text.trim(),
-      rewritten: rewrittenSentence
-    };
-    srStatus.textContent = "Sentence rewritten.";
-    updateCodexBridgeState();
-  } catch (error) {
-    console.error(error);
-    showToast(error.message);
-    srStatus.textContent = "Rewrite failed.";
-    if (span.parentNode) {
-      const text = span.textContent;
-      span.parentNode.replaceChild(document.createTextNode(text), span);
-    }
-  } finally {
-    setBusyState(false);
-  }
-}
-
-function showToast(message) {
-  toast.textContent = message;
-  toast.classList.remove("sr-only");
-  setTimeout(() => toast.classList.add("sr-only"), 3000);
-}
+});
 
 editor.addEventListener("keydown", async (event) => {
   if (event.key === "Tab") {
@@ -175,9 +84,9 @@ editor.addEventListener("keydown", async (event) => {
   }
 });
 
-editor.addEventListener("input", (event) => {
+editor.addEventListener("input", () => {
   updateCodexBridgeState();
-  
+
   if (settings.yoloMode) {
     clearTimeout(yoloTimer);
     yoloTimer = setTimeout(async () => {
@@ -191,52 +100,130 @@ editor.addEventListener("keyup", (event) => {
     updateCodexBridgeState();
   }
 });
+
 editor.addEventListener("mouseup", updateCodexBridgeState);
 document.addEventListener("selectionchange", updateCodexBridgeState);
 codexBridgeButton.addEventListener("click", handleCodexBridgeCopy);
+copyLastRewriteButton.addEventListener("click", handleCopyLatestRewrite);
+copyDraftButton.addEventListener("click", handleCopyDraft);
 
+updateStatusChips();
 updateCodexBridgeState();
 
-function setBusyState(isBusy) {
-  isRewriting = isBusy;
-  editor.setAttribute("aria-busy", String(isBusy));
+async function rewriteCurrentSentence() {
+  if (isRewriting) {
+    return;
+  }
+
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || !editor.contains(selection.anchorNode)) {
+    showToast("Place the caret inside the editor first.");
+    return;
+  }
+
+  const content = editor.textContent || "";
+  const caretOffset = getCaretOffset(editor);
+  const sentenceRange = findSentenceRange(content, caretOffset);
+
+  if (!sentenceRange || !sentenceRange.text.trim()) {
+    showToast("Ghostline could not find a sentence at this caret position.");
+    return;
+  }
+
+  const domRange = resolveDomRange(sentenceRange);
+  const shimmer = domRange ? wrapRangeInShimmer(domRange) : null;
+
+  try {
+    setBusyState(true);
+    setRewriteStatus("Polishing");
+    srStatus.textContent = "Rewriting current sentence.";
+
+    const rewrittenSentence = await rewriteSentence(sentenceRange.text.trim());
+    if (!rewrittenSentence) {
+      throw new Error("Rewrite returned an empty sentence.");
+    }
+
+    const finalResult =
+      sentenceRange.leadingWhitespace + rewrittenSentence + sentenceRange.trailingWhitespace;
+
+    if (shimmer?.parentNode) {
+      shimmer.replaceWith(document.createTextNode(finalResult));
+      placeCaretAfterNode(editor, finalResult, sentenceRange.start);
+    } else {
+      editor.textContent =
+        content.slice(0, sentenceRange.start) + finalResult + content.slice(sentenceRange.end);
+      placeCaretAtOffset(editor, sentenceRange.start + finalResult.length);
+    }
+
+    lastRewriteSnapshot = {
+      original: sentenceRange.text.trim(),
+      rewritten: rewrittenSentence
+    };
+
+    latestOriginal.textContent = lastRewriteSnapshot.original;
+    latestRewritten.textContent = lastRewriteSnapshot.rewritten;
+    srStatus.textContent = "Sentence rewritten.";
+    setRewriteStatus("Done");
+    updateCodexBridgeState();
+  } catch (error) {
+    console.error(error);
+    if (shimmer?.parentNode) {
+      shimmer.replaceWith(document.createTextNode(shimmer.textContent || sentenceRange.text));
+    }
+    showToast(error.message || "Rewrite failed.");
+    srStatus.textContent = "Rewrite failed.";
+    setRewriteStatus("Error");
+  } finally {
+    setBusyState(false);
+  }
+}
+
+function setBusyState(nextBusy) {
+  isRewriting = nextBusy;
+  editor.setAttribute("aria-busy", String(nextBusy));
+  codexBridgeButton.disabled = nextBusy;
+  copyLastRewriteButton.disabled = nextBusy || !lastRewriteSnapshot;
+  copyDraftButton.disabled = nextBusy;
+}
+
+function updateStatusChips() {
+  providerStatus.textContent = providerLabel(settings);
+  yoloStatus.textContent = settings.yoloMode ? "YOLO" : "Manual";
+}
+
+function setRewriteStatus(status) {
+  rewriteStatus.textContent = status;
 }
 
 async function rewriteSentence(sentence) {
-  const options = {};
-  if (settings.model !== "codex") {
-    options.model = settings.model === "openai" ? "gpt-4o" : settings.model;
-    if (settings.apiKey) options.apiKey = settings.apiKey;
-    if (settings.endpoint) options.endpoint = settings.endpoint;
-  }
+  const options = buildRewriteOptions();
 
-  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ghostline) {
+  if (window.webkit?.messageHandlers?.ghostline) {
     return new Promise((resolve, reject) => {
-        window.onGhostlineResult = (result) => {
-            resolve(result.finalText.trim());
-        };
-        window.onGhostlineError = (error) => {
-            reject(new Error(error));
-        };
-        window.webkit.messageHandlers.ghostline.postMessage({
-            action: "rewrite",
-            sentence,
-            options
-        });
+      window.onGhostlineResult = (result) => {
+        resolve(String(result.finalText || "").trim());
+      };
+      window.onGhostlineError = (message) => {
+        reject(new Error(message || "Rewrite failed."));
+      };
+
+      window.webkit.messageHandlers.ghostline.postMessage({
+        action: "rewrite",
+        sentence,
+        options
+      });
     });
   }
 
-  const body = { sentence, ...options };
   const response = await fetch("/api/rewrite", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ sentence, ...options })
   });
 
   const payload = await response.json();
-
   if (!response.ok) {
     throw new Error(payload?.error || "Rewrite failed.");
   }
@@ -244,9 +231,26 @@ async function rewriteSentence(sentence) {
   return typeof payload?.finalText === "string" ? payload.finalText.trim() : "";
 }
 
+function buildRewriteOptions() {
+  const preset = providerPresets[settings.provider] || providerPresets.custom;
+
+  if (settings.provider === "codex") {
+    return {
+      provider: "codex",
+      model: settings.customModel || preset.defaultModel
+    };
+  }
+
+  return {
+    provider: settings.provider,
+    model: settings.customModel || preset.defaultModel,
+    apiKey: settings.apiKey,
+    endpoint: settings.endpoint || preset.endpoint
+  };
+}
+
 async function handleCodexBridgeCopy() {
   const context = getCodexBridgeContext();
-
   if (!context.draft) {
     codexStatus.textContent = "Add some writing first so Ghostline has something to hand off.";
     return;
@@ -263,11 +267,33 @@ async function handleCodexBridgeCopy() {
   }
 }
 
+async function handleCopyLatestRewrite() {
+  if (!lastRewriteSnapshot) {
+    showToast("No rewrite to copy yet.");
+    return;
+  }
+
+  await copyTextToClipboard(lastRewriteSnapshot.rewritten);
+  showToast("Latest rewrite copied.");
+}
+
+async function handleCopyDraft() {
+  const draft = cleanDraft(editor.textContent || "");
+  if (!draft) {
+    showToast("There is no draft to copy yet.");
+    return;
+  }
+
+  await copyTextToClipboard(draft);
+  showToast("Draft copied.");
+}
+
 function updateCodexBridgeState() {
   const context = getCodexBridgeContext();
-  codexBridgeButton.disabled = !context.draft;
+  codexBridgeButton.disabled = isRewriting || !context.draft;
+  copyLastRewriteButton.disabled = isRewriting || !lastRewriteSnapshot;
   codexFocus.textContent =
-    context.focusSentence || "No active sentence yet. Ghostline will hand off the whole draft.";
+    context.focusSentence || "No active sentence yet. Ghostline will package the whole draft.";
 }
 
 function getCodexBridgeContext() {
@@ -290,10 +316,8 @@ function getActiveSentence(draft) {
   }
 
   const selection = window.getSelection();
-
   if (selection && selection.rangeCount > 0 && editor.contains(selection.anchorNode)) {
     const sentenceRange = findSentenceRange(draft, getCaretOffset(editor));
-
     if (sentenceRange?.text) {
       lastFocusedSentence = sentenceRange.text.trim();
       return lastFocusedSentence;
@@ -348,6 +372,20 @@ function buildCodexBridgePrompt({ draft, focusSentence, latestRewrite }) {
   return sections.join("\n");
 }
 
+function providerLabel(currentSettings) {
+  const preset = providerPresets[currentSettings.provider] || providerPresets.custom;
+  return currentSettings.customModel || preset.label;
+}
+
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.remove("sr-only");
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => {
+    toast.classList.add("sr-only");
+  }, 2600);
+}
+
 function cleanDraft(value) {
   return value.replace(/\u00a0/g, " ").replace(/\r\n?/g, "\n").trim();
 }
@@ -358,104 +396,207 @@ async function copyTextToClipboard(text) {
     return;
   }
 
-  const helper = document.createElement("textarea");
-  helper.value = text;
-  helper.setAttribute("readonly", "true");
-  helper.style.position = "fixed";
-  helper.style.opacity = "0";
-  document.body.append(helper);
-  helper.select();
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.setAttribute("readonly", "");
+  textArea.style.position = "absolute";
+  textArea.style.left = "-9999px";
+  document.body.append(textArea);
+  textArea.select();
   document.execCommand("copy");
-  helper.remove();
+  textArea.remove();
 }
 
-function getCaretOffset(element) {
-  const selection = window.getSelection();
+function resolveDomRange(sentenceRange) {
+  const range = document.createRange();
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  let currentPos = 0;
+  let startNode = null;
+  let startOffset = 0;
+  let endNode = null;
+  let endOffset = 0;
+  let node = walker.nextNode();
 
+  while (node) {
+    const length = node.textContent.length;
+    const nextPos = currentPos + length;
+
+    if (!startNode && sentenceRange.start >= currentPos && sentenceRange.start < nextPos) {
+      startNode = node;
+      startOffset = sentenceRange.start - currentPos;
+    }
+
+    if (sentenceRange.end > currentPos && sentenceRange.end <= nextPos) {
+      endNode = node;
+      endOffset = sentenceRange.end - currentPos;
+      break;
+    }
+
+    currentPos = nextPos;
+    node = walker.nextNode();
+  }
+
+  if (!startNode || !endNode) {
+    return null;
+  }
+
+  range.setStart(startNode, startOffset);
+  range.setEnd(endNode, endOffset);
+  return range;
+}
+
+function wrapRangeInShimmer(range) {
+  const span = document.createElement("span");
+  span.className = "shimmer";
+
+  try {
+    range.surroundContents(span);
+    return span;
+  } catch (error) {
+    console.warn("Failed to surround contents for shimmer effect.", error);
+    return null;
+  }
+}
+
+function getCaretOffset(root) {
+  const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) {
     return 0;
   }
 
   const range = selection.getRangeAt(0).cloneRange();
-  range.selectNodeContents(element);
-  range.setEnd(selection.anchorNode, selection.anchorOffset);
+  range.selectNodeContents(root);
+  range.setEnd(selection.focusNode, selection.focusOffset);
   return range.toString().length;
 }
 
-function setCaretOffset(element, offset) {
+function placeCaretAtOffset(root, offset) {
   const selection = window.getSelection();
   const range = document.createRange();
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-  let currentOffset = 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let current = 0;
   let node = walker.nextNode();
 
   while (node) {
-    const nextOffset = currentOffset + node.textContent.length;
-
-    if (offset <= nextOffset) {
-      range.setStart(node, offset - currentOffset);
+    const next = current + node.textContent.length;
+    if (offset <= next) {
+      range.setStart(node, Math.max(0, offset - current));
       range.collapse(true);
       selection.removeAllRanges();
       selection.addRange(range);
       return;
     }
-
-    currentOffset = nextOffset;
+    current = next;
     node = walker.nextNode();
   }
 
-  range.selectNodeContents(element);
+  range.selectNodeContents(root);
   range.collapse(false);
   selection.removeAllRanges();
   selection.addRange(range);
 }
 
+function placeCaretAfterNode(root, replacementText, startOffset) {
+  const normalizedLength = replacementText.length;
+  placeCaretAtOffset(root, startOffset + normalizedLength);
+}
+
 function findSentenceRange(text, caretOffset) {
-  if (!text.trim()) {
-    return null;
+  const safeCaret = Math.max(0, Math.min(caretOffset, text.length));
+  let start = safeCaret;
+  while (start > 0) {
+    const char = text[start - 1];
+    if (char === "." || char === "!" || char === "?" || char === "\n") {
+      break;
+    }
+    start -= 1;
   }
 
-  const safeCaret = Math.max(0, Math.min(caretOffset, text.length));
-  const startBoundary = findStartBoundary(text, safeCaret);
-  const endBoundary = findEndBoundary(text, safeCaret);
-  const rawText = text.slice(startBoundary, endBoundary);
-  const leadingWhitespace = rawText.match(/^\s*/)?.[0] || "";
-  const trailingWhitespace = rawText.match(/\s*$/)?.[0] || "";
-  const sentenceText = rawText.trim();
+  let end = safeCaret;
+  while (end < text.length) {
+    const char = text[end];
+    if (char === "." || char === "!" || char === "?") {
+      end += 1;
+      break;
+    }
+    if (char === "\n") {
+      break;
+    }
+    end += 1;
+  }
 
-  if (!sentenceText) {
+  const raw = text.slice(start, end);
+  const leadingWhitespaceMatch = raw.match(/^\s*/u);
+  const trailingWhitespaceMatch = raw.match(/\s*$/u);
+  const leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[0] : "";
+  const trailingWhitespace = trailingWhitespaceMatch ? trailingWhitespaceMatch[0] : "";
+  const trimmed = raw.trim();
+
+  if (!trimmed) {
     return null;
   }
 
   return {
-    start: startBoundary,
-    end: endBoundary,
-    text: sentenceText,
+    start,
+    end,
+    text: raw,
     leadingWhitespace,
     trailingWhitespace
   };
 }
 
-function findStartBoundary(text, caretOffset) {
-  for (let index = Math.max(0, caretOffset - 1); index >= 0; index -= 1) {
-    if (/[.!?\n]/.test(text[index])) {
-      return index + 1;
-    }
+const providerPresets = {
+  codex: {
+    label: "Codex",
+    defaultModel: ""
+  },
+  openai: {
+    label: "OpenAI",
+    defaultModel: "gpt-5-mini",
+    endpoint: "https://api.openai.com/v1"
+  },
+  claude: {
+    label: "Claude",
+    defaultModel: "claude-sonnet-4-0",
+    endpoint: "https://api.anthropic.com/v1"
+  },
+  gemini: {
+    label: "Gemini",
+    defaultModel: "gemini-2.5-flash",
+    endpoint: "https://generativelanguage.googleapis.com/v1beta/openai"
+  },
+  kimi: {
+    label: "Kimi",
+    defaultModel: "kimi-latest",
+    endpoint: "https://api.moonshot.cn/v1"
+  },
+  qwen: {
+    label: "Qwen",
+    defaultModel: "qwen-plus",
+    endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+  },
+  openrouter: {
+    label: "OpenRouter",
+    defaultModel: "openai/gpt-5-mini",
+    endpoint: "https://openrouter.ai/api/v1"
+  },
+  groq: {
+    label: "Groq",
+    defaultModel: "llama-3.3-70b-versatile",
+    endpoint: "https://api.groq.com/openai/v1"
+  },
+  deepseek: {
+    label: "DeepSeek",
+    defaultModel: "deepseek-chat",
+    endpoint: "https://api.deepseek.com/v1"
+  },
+  ollama: {
+    label: "Ollama",
+    defaultModel: "llama3.1:8b",
+    endpoint: "http://localhost:11434/v1"
+  },
+  custom: {
+    label: "Custom",
+    defaultModel: ""
   }
-
-  return 0;
-}
-
-function findEndBoundary(text, caretOffset) {
-  for (let index = caretOffset; index < text.length; index += 1) {
-    if (/[.!?]/.test(text[index])) {
-      return index + 1;
-    }
-
-    if (text[index] === "\n") {
-      return index;
-    }
-  }
-
-  return text.length;
-}
+};

@@ -16,6 +16,69 @@ const host = process.env.HOST || "127.0.0.1";
 const codexBinary =
   process.env.CODEX_BIN || (existsSync(bundledCodexBinary) ? bundledCodexBinary : "codex");
 const codexModel = process.env.CODEX_MODEL || process.env.OPENAI_MODEL || "";
+const providerPresets = {
+  codex: {
+    label: "Codex",
+    defaultModel: codexModel
+  },
+  openai: {
+    label: "OpenAI",
+    defaultModel: process.env.OPENAI_MODEL || "gpt-5-mini",
+    endpoint: "https://api.openai.com/v1",
+    apiKeyEnv: "OPENAI_API_KEY"
+  },
+  claude: {
+    label: "Claude",
+    defaultModel: "claude-sonnet-4-0",
+    endpoint: "https://api.anthropic.com/v1",
+    apiKeyEnv: "ANTHROPIC_API_KEY"
+  },
+  gemini: {
+    label: "Gemini",
+    defaultModel: "gemini-2.5-flash",
+    endpoint: "https://generativelanguage.googleapis.com/v1beta/openai",
+    apiKeyEnv: "GEMINI_API_KEY"
+  },
+  kimi: {
+    label: "Kimi",
+    defaultModel: "kimi-latest",
+    endpoint: "https://api.moonshot.cn/v1",
+    apiKeyEnv: "MOONSHOT_API_KEY"
+  },
+  qwen: {
+    label: "Qwen",
+    defaultModel: "qwen-plus",
+    endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    apiKeyEnv: "DASHSCOPE_API_KEY"
+  },
+  openrouter: {
+    label: "OpenRouter",
+    defaultModel: "openai/gpt-5-mini",
+    endpoint: "https://openrouter.ai/api/v1",
+    apiKeyEnv: "OPENROUTER_API_KEY"
+  },
+  groq: {
+    label: "Groq",
+    defaultModel: "llama-3.3-70b-versatile",
+    endpoint: "https://api.groq.com/openai/v1",
+    apiKeyEnv: "GROQ_API_KEY"
+  },
+  deepseek: {
+    label: "DeepSeek",
+    defaultModel: "deepseek-chat",
+    endpoint: "https://api.deepseek.com/v1",
+    apiKeyEnv: "DEEPSEEK_API_KEY"
+  },
+  ollama: {
+    label: "Ollama",
+    defaultModel: "llama3.1:8b",
+    endpoint: "http://localhost:11434/v1"
+  },
+  custom: {
+    label: "Custom",
+    defaultModel: ""
+  }
+};
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -64,6 +127,7 @@ async function handleRewrite(request, response) {
   }
 
   const sentence = typeof body?.sentence === "string" ? body.sentence.trim() : "";
+  const provider = typeof body?.provider === "string" ? body.provider : "codex";
   const customModel = typeof body?.model === "string" ? body.model : null;
   const customApiKey = typeof body?.apiKey === "string" ? body.apiKey : null;
   const customEndpoint = typeof body?.endpoint === "string" ? body.endpoint : null;
@@ -75,6 +139,7 @@ async function handleRewrite(request, response) {
 
   try {
     const rewrite = await rewriteSentence(sentence, {
+      provider,
       model: customModel,
       apiKey: customApiKey,
       endpoint: customEndpoint
@@ -93,29 +158,26 @@ async function handleRewrite(request, response) {
 }
 
 async function rewriteSentence(sentence, options = {}) {
-  try {
+  if ((options.provider || "codex") === "codex") {
     return await rewriteWithCodex(sentence, options);
-  } catch (error) {
-    if (options.apiKey || process.env.OPENAI_API_KEY) {
-      console.warn("Codex rewrite failed, falling back to the OpenAI API.", error);
-      return rewriteWithOpenAI(sentence, options);
-    }
-
-    throw error;
   }
+
+  return rewriteWithCompatibleProvider(sentence, options);
 }
 
-async function rewriteWithOpenAI(sentence, options = {}) {
-  const improvedText = await createOpenAIResponse({
+async function rewriteWithCompatibleProvider(sentence, options = {}) {
+  const resolved = resolveProviderOptions(options);
+
+  const improvedText = await createCompatibleChatCompletion({
     instructions: improveInstructions,
     input: sentence,
-    options
+    options: resolved
   });
 
-  const finalText = await createOpenAIResponse({
+  const finalText = await createCompatibleChatCompletion({
     instructions: humanizeInstructions,
     input: `Original sentence:\n${sentence}\n\nImproved sentence:\n${improvedText}`,
-    options
+    options: resolved
   });
 
   return {
@@ -124,26 +186,39 @@ async function rewriteWithOpenAI(sentence, options = {}) {
   };
 }
 
-async function createOpenAIResponse({ instructions, input, options = {} }) {
-  const model = options.model || process.env.OPENAI_MODEL || "gpt-5-mini";
-  const apiKey = options.apiKey || process.env.OPENAI_API_KEY;
-  const baseUrl = options.endpoint || "https://api.openai.com/v1";
-  const url = baseUrl.endsWith("/responses") ? baseUrl : `${baseUrl.replace(/\/$/, "")}/responses`;
+async function createCompatibleChatCompletion({ instructions, input, options }) {
+  const url = `${options.endpoint.replace(/\/$/, "")}/chat/completions`;
+  const headers = {
+    Authorization: `Bearer ${options.apiKey}`,
+    "Content-Type": "application/json"
+  };
+
+  if (options.provider === "openrouter") {
+    headers["HTTP-Referer"] = "https://github.com/Collab2Dev/Ghostline";
+    headers["X-Title"] = "Ghostline";
+  }
+
+  if (options.provider === "gemini") {
+    headers["x-goog-api-client"] = "collab2dev-ghostline/1.0.0";
+  }
 
   const apiResponse = await fetch(url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
+    headers,
     body: JSON.stringify({
-      model,
-      instructions,
-      input,
-      max_output_tokens: 120,
-      reasoning: {
-        effort: "minimal"
-      }
+      model: options.model,
+      messages: [
+        {
+          role: "system",
+          content: instructions
+        },
+        {
+          role: "user",
+          content: input
+        }
+      ],
+      temperature: 0.4,
+      max_completion_tokens: 180
     })
   });
 
@@ -151,11 +226,12 @@ async function createOpenAIResponse({ instructions, input, options = {} }) {
 
   if (!apiResponse.ok) {
     const message =
-      payload?.error?.message || "OpenAI request failed while rewriting the sentence.";
+      payload?.error?.message ||
+      `${providerPresets[options.provider]?.label || "Provider"} request failed while rewriting the sentence.`;
     throw new Error(message);
   }
 
-  return cleanSentence(extractOutputText(payload));
+  return cleanSentence(extractChatCompletionText(payload));
 }
 
 async function rewriteWithCodex(sentence, options = {}) {
@@ -306,12 +382,73 @@ function extractOutputText(payload) {
   return text;
 }
 
+function extractChatCompletionText(payload) {
+  const content = payload?.choices?.[0]?.message?.content;
+
+  if (typeof content === "string" && content.trim()) {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    const text = content
+      .map((item) => (typeof item?.text === "string" ? item.text : ""))
+      .join(" ")
+      .trim();
+
+    if (text) {
+      return text;
+    }
+  }
+
+  throw new Error("The provider returned an empty sentence.");
+}
+
 function cleanSentence(value) {
   return value
     .replace(/\s*\n+\s*/g, " ")
     .replace(/\s{2,}/g, " ")
     .replace(/^["'“”]+|["'“”]+$/g, "")
     .trim();
+}
+
+function resolveProviderOptions(options = {}) {
+  const providerKey =
+    typeof options.provider === "string" && providerPresets[options.provider]
+      ? options.provider
+      : "openai";
+  const preset = providerPresets[providerKey];
+  const endpoint = normalizeValue(options.endpoint) || preset.endpoint;
+  const model = normalizeValue(options.model) || preset.defaultModel;
+  const apiKey =
+    normalizeValue(options.apiKey) ||
+    (preset.apiKeyEnv ? normalizeValue(process.env[preset.apiKeyEnv]) : "");
+
+  if (!endpoint) {
+    throw new Error(`No endpoint is configured for ${preset.label}.`);
+  }
+
+  if (!model) {
+    throw new Error(`Pick a model name for ${preset.label}.`);
+  }
+
+  if (!apiKey && providerKey !== "ollama") {
+    throw new Error(`Add an API key for ${preset.label}.`);
+  }
+
+  return {
+    provider: providerKey,
+    endpoint,
+    model,
+    apiKey: apiKey || "ollama"
+  };
+}
+
+function normalizeValue(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim();
 }
 
 async function serveStatic(request, response) {

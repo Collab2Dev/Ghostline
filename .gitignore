@@ -1,0 +1,6 @@
+.DS_Store
+Ghostline.app
+Ghostline-mac.zip
+.build/arm64-apple-macosx/release/
+.build/release
+.build/release.yaml

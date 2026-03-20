@@ -1,28 +1,56 @@
 const editor = document.querySelector("#editor");
 const srStatus = document.querySelector("#srStatus");
-const wifiPill = document.querySelector("#wifiPill");
-const wifiTile = document.querySelector("#wifiTile");
 const codexBridgeButton = document.querySelector("#codexBridgeButton");
 const codexFocus = document.querySelector("#codexFocus");
 const codexStatus = document.querySelector("#codexStatus");
 
+const settingsTrigger = document.querySelector("#settingsTrigger");
+const settingsPanel = document.querySelector("#settingsPanel");
+const closeSettings = document.querySelector("#closeSettings");
+const settingsForm = document.querySelector("#settingsForm");
+const yoloModeInput = document.querySelector("#yoloMode");
+const modelSelect = document.querySelector("#model");
+const apiKeyInput = document.querySelector("#apiKey");
+const endpointInput = document.querySelector("#endpoint");
+const toast = document.querySelector("#toast");
+
 let isRewriting = false;
 let lastRewriteSnapshot = null;
 let lastFocusedSentence = "";
+let yoloTimer = null;
 
-editor.addEventListener("keydown", async (event) => {
-  if (event.key !== "Tab") {
-    return;
-  }
+// Settings initialization
+const settings = {
+  yoloMode: localStorage.getItem("ghostline_yolo") === "true",
+  model: localStorage.getItem("ghostline_model") || "codex",
+  apiKey: localStorage.getItem("ghostline_apiKey") || "",
+  endpoint: localStorage.getItem("ghostline_endpoint") || ""
+};
 
-  event.preventDefault();
+yoloModeInput.checked = settings.yoloMode;
+modelSelect.value = settings.model;
+apiKeyInput.value = settings.apiKey;
+endpointInput.value = settings.endpoint;
 
-  if (isRewriting) {
-    return;
-  }
+settingsTrigger.addEventListener("click", () => settingsPanel.classList.toggle("sr-only"));
+closeSettings.addEventListener("click", () => settingsPanel.classList.add("sr-only"));
+
+settingsForm.addEventListener("input", () => {
+  settings.yoloMode = yoloModeInput.checked;
+  settings.model = modelSelect.value;
+  settings.apiKey = apiKeyInput.value;
+  settings.endpoint = endpointInput.value;
+
+  localStorage.setItem("ghostline_yolo", settings.yoloMode);
+  localStorage.setItem("ghostline_model", settings.model);
+  localStorage.setItem("ghostline_apiKey", settings.apiKey);
+  localStorage.setItem("ghostline_endpoint", settings.endpoint);
+});
+
+async function rewriteCurrentSentence() {
+  if (isRewriting) return;
 
   const selection = window.getSelection();
-
   if (!selection || selection.rangeCount === 0 || !editor.contains(selection.anchorNode)) {
     return;
   }
@@ -35,6 +63,44 @@ editor.addEventListener("keydown", async (event) => {
     return;
   }
 
+  // Find the text node(s) corresponding to the sentence range
+  const range = document.createRange();
+  let startNode = null, startOffset = 0;
+  let endNode = null, endOffset = 0;
+  
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  let currentPos = 0;
+  let node = walker.nextNode();
+  while (node) {
+    const nextPos = currentPos + node.textContent.length;
+    if (!startNode && sentenceRange.start >= currentPos && sentenceRange.start < nextPos) {
+      startNode = node;
+      startOffset = sentenceRange.start - currentPos;
+    }
+    if (sentenceRange.end > currentPos && sentenceRange.end <= nextPos) {
+      endNode = node;
+      endOffset = sentenceRange.end - currentPos;
+      break;
+    }
+    currentPos = nextPos;
+    node = walker.nextNode();
+  }
+
+  if (!startNode || !endNode) return;
+
+  range.setStart(startNode, startOffset);
+  range.setEnd(endNode, endOffset);
+
+  // Wrap the sentence in a shimmer span
+  const span = document.createElement("span");
+  span.className = "shimmer";
+  try {
+    range.surroundContents(span);
+  } catch (e) {
+    // If surroundContents fails (complex selection), fallback to simpler replacement
+    console.warn("Complex selection, skipping shimmer effect", e);
+  }
+
   try {
     setBusyState(true);
     srStatus.textContent = "Rewriting current sentence.";
@@ -42,21 +108,35 @@ editor.addEventListener("keydown", async (event) => {
     const rewrittenSentence = await rewriteSentence(sentenceRange.text.trim());
 
     if (!rewrittenSentence) {
+      if (span.parentNode) {
+        // Remove span and restore text if possible
+        const text = span.textContent;
+        span.parentNode.replaceChild(document.createTextNode(text), span);
+      }
       return;
     }
 
-    const nextContent =
-      content.slice(0, sentenceRange.start) +
-      sentenceRange.leadingWhitespace +
-      rewrittenSentence +
-      sentenceRange.trailingWhitespace +
-      content.slice(sentenceRange.end);
+    const finalResult = sentenceRange.leadingWhitespace + rewrittenSentence + sentenceRange.trailingWhitespace;
+    
+    if (span.parentNode) {
+      span.textContent = finalResult;
+      span.className = ""; // Remove shimmer
+      // Un-wrap the span to keep it clean
+      const textNode = document.createTextNode(finalResult);
+      span.parentNode.replaceChild(textNode, span);
+      
+      // Reset caret at the end of the new text
+      const newSelection = window.getSelection();
+      const newRange = document.createRange();
+      newRange.setStartAfter(textNode);
+      newRange.collapse(true);
+      newSelection.removeAllRanges();
+      newSelection.addRange(newRange);
+    } else {
+      // Fallback
+      editor.textContent = content.slice(0, sentenceRange.start) + finalResult + content.slice(sentenceRange.end);
+    }
 
-    editor.textContent = nextContent;
-    setCaretOffset(
-      editor,
-      sentenceRange.start + sentenceRange.leadingWhitespace.length + rewrittenSentence.length
-    );
     lastRewriteSnapshot = {
       original: sentenceRange.text.trim(),
       rewritten: rewrittenSentence
@@ -65,36 +145,52 @@ editor.addEventListener("keydown", async (event) => {
     updateCodexBridgeState();
   } catch (error) {
     console.error(error);
+    showToast(error.message);
     srStatus.textContent = "Rewrite failed.";
+    if (span.parentNode) {
+      const text = span.textContent;
+      span.parentNode.replaceChild(document.createTextNode(text), span);
+    }
   } finally {
     setBusyState(false);
   }
-});
+}
 
-editor.addEventListener("paste", (event) => {
-  event.preventDefault();
-  const text = event.clipboardData?.getData("text/plain") || "";
-  const selection = window.getSelection();
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.remove("sr-only");
+  setTimeout(() => toast.classList.add("sr-only"), 3000);
+}
 
-  if (!selection || selection.rangeCount === 0) {
-    editor.textContent = `${editor.textContent || ""}${text}`;
-    setCaretOffset(editor, (editor.textContent || "").length);
+editor.addEventListener("keydown", async (event) => {
+  if (event.key === "Tab") {
+    event.preventDefault();
+    await rewriteCurrentSentence();
     return;
   }
 
-  const range = selection.getRangeAt(0);
-  range.deleteContents();
-  const textNode = document.createTextNode(text);
-  range.insertNode(textNode);
-  range.setStartAfter(textNode);
-  range.collapse(true);
-  selection.removeAllRanges();
-  selection.addRange(range);
-  updateCodexBridgeState();
+  if (event.key === "Enter" && settings.yoloMode) {
+    clearTimeout(yoloTimer);
+    await rewriteCurrentSentence();
+  }
 });
 
-editor.addEventListener("input", updateCodexBridgeState);
-editor.addEventListener("keyup", updateCodexBridgeState);
+editor.addEventListener("input", (event) => {
+  updateCodexBridgeState();
+  
+  if (settings.yoloMode) {
+    clearTimeout(yoloTimer);
+    yoloTimer = setTimeout(async () => {
+      await rewriteCurrentSentence();
+    }, 1500);
+  }
+});
+
+editor.addEventListener("keyup", (event) => {
+  if (event.key !== "Tab" && event.key !== "Enter") {
+    updateCodexBridgeState();
+  }
+});
 editor.addEventListener("mouseup", updateCodexBridgeState);
 document.addEventListener("selectionchange", updateCodexBridgeState);
 codexBridgeButton.addEventListener("click", handleCodexBridgeCopy);
@@ -104,17 +200,22 @@ updateCodexBridgeState();
 function setBusyState(isBusy) {
   isRewriting = isBusy;
   editor.setAttribute("aria-busy", String(isBusy));
-  wifiPill.classList.toggle("is-busy", isBusy);
-  wifiTile.classList.toggle("is-busy", isBusy);
 }
 
 async function rewriteSentence(sentence) {
+  const body = { sentence };
+  if (settings.model !== "codex") {
+    body.model = settings.model === "openai" ? "gpt-4o" : settings.model; // Use a reasonable default for OpenAI if not specified
+    if (settings.apiKey) body.apiKey = settings.apiKey;
+    if (settings.endpoint) body.endpoint = settings.endpoint;
+  }
+
   const response = await fetch("/api/rewrite", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ sentence })
+    body: JSON.stringify(body)
   });
 
   const payload = await response.json();

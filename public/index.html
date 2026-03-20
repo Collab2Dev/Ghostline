@@ -25,18 +25,50 @@
             <p class="window-label">Silent sentence rewrite</p>
           </div>
 
-          <div class="wifi-pill" id="wifiPill" aria-hidden="true">
-            <span class="wifi-pill-icon">
-              <svg viewBox="0 0 24 24" role="presentation">
-                <path
-                  d="M2.8 8.6A15.4 15.4 0 0 1 12 5.5c2.3 0 4.6.5 6.7 1.5M5.7 12.5a10.2 10.2 0 0 1 12.6.1M8.9 16.1a5.5 5.5 0 0 1 6.1.1M12 19.3h.1"
-                />
-                <path d="M3 3l18 18" />
-              </svg>
-            </span>
-            <span>Wi-Fi Off</span>
-          </div>
+          <button class="settings-trigger" id="settingsTrigger" aria-label="Open Settings" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
         </header>
+
+        <div id="settingsPanel" class="settings-panel sr-only">
+          <div class="settings-content">
+            <header class="settings-header">
+              <h2>Settings</h2>
+              <button id="closeSettings" class="close-settings" type="button">Close</button>
+            </header>
+            <form id="settingsForm">
+              <div class="field">
+                <label class="toggle">
+                  <input type="checkbox" id="yoloMode">
+                  <span class="slider"></span>
+                  <span class="label-text">YOLO Mode (Auto-rewrite)</span>
+                </label>
+              </div>
+              <div class="field">
+                <label for="model">Model</label>
+                <select id="model">
+                  <option value="codex">Codex (Default)</option>
+                  <option value="openai">OpenAI API</option>
+                  <option value="custom">Custom Endpoint</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="apiKey">API Key</label>
+                <input type="password" id="apiKey" placeholder="sk-...">
+              </div>
+              <div class="field">
+                <label for="endpoint">Custom Endpoint URL</label>
+                <input type="url" id="endpoint" placeholder="http://localhost:11434/v1">
+              </div>
+              <p class="settings-hint">Stored locally in your browser.</p>
+            </form>
+          </div>
+        </div>
+
+        <div id="toast" class="toast sr-only"></div>
 
         <div class="workspace">
           <section class="editor-panel">
@@ -70,33 +102,6 @@
           </section>
 
           <aside class="control-panel">
-            <section class="wifi-tile" id="wifiTile" aria-hidden="true">
-              <div class="tile-top">
-                <div class="wifi-orb">
-                  <svg viewBox="0 0 24 24" role="presentation">
-                    <path
-                      d="M2.8 8.6A15.4 15.4 0 0 1 12 5.5c2.3 0 4.6.5 6.7 1.5M5.7 12.5a10.2 10.2 0 0 1 12.6.1M8.9 16.1a5.5 5.5 0 0 1 6.1.1M12 19.3h.1"
-                    />
-                    <path d="M3 3l18 18" />
-                  </svg>
-                </div>
-
-                <div class="tile-copy">
-                  <p class="tile-label">Network</p>
-                  <p class="tile-title">Wi-Fi Off</p>
-                </div>
-              </div>
-
-              <div class="signal-bars">
-                <span></span>
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-
-              <p class="tile-meta">Tahoe glass. Offline theater. Quiet rewrite.</p>
-            </section>
-
             <section class="process-card">
               <p class="eyebrow">Sentence Bridge</p>
               <div class="process-step">

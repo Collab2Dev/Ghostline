@@ -42,13 +42,13 @@ const providerPresets = {
   },
   kimi: {
     label: "Kimi",
-    defaultModel: "kimi-latest",
+    defaultModel: "kimi-k2-0711-preview",
     endpoint: "https://api.moonshot.cn/v1",
     apiKeyEnv: "MOONSHOT_API_KEY"
   },
   qwen: {
     label: "Qwen",
-    defaultModel: "qwen-plus",
+    defaultModel: "qwen-plus-latest",
     endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
     apiKeyEnv: "DASHSCOPE_API_KEY"
   },

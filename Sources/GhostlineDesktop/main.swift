@@ -39,6 +39,7 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
   private var pollTimer: Timer?
   private var isBusy = false
   private var hotKeyController: HotKeyController?
+  private var panelMode: PanelMode = .follow
   
   private var window: NSWindow?
   private var webView: WKWebView?
@@ -101,8 +102,8 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
       webView.setValue(false, forKey: "drawsBackground") // Transparent background
       
       let window = NSWindow(
-        contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
-        styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+        contentRect: NSRect(x: 0, y: 0, width: 460, height: 760),
+        styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
         backing: .buffered,
         defer: false
       )
@@ -111,12 +112,14 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
       window.titleVisibility = .hidden
       window.titlebarAppearsTransparent = true
       window.isReleasedWhenClosed = false
-      window.backgroundColor = .clear
+      window.backgroundColor = NSColor.windowBackgroundColor
+      window.level = .floating
+      window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
       
       let visualEffect = NSVisualEffectView()
       visualEffect.blendingMode = .behindWindow
       visualEffect.state = .active
-      visualEffect.material = .sidebar
+      visualEffect.material = .hudWindow
       window.contentView = visualEffect
       
       visualEffect.addSubview(webView)
@@ -135,8 +138,14 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
       self.webView = webView
       self.window = window
     }
-    
+
+    guard panelMode != .hidden else {
+      window?.orderOut(nil)
+      return
+    }
+
     window?.makeKeyAndOrderFront(nil)
+    positionWindowIfNeeded()
     NSApp.activate(ignoringOtherApps: true)
   }
 
@@ -144,19 +153,36 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
     guard let body = message.body as? [String: Any], let action = body["action"] as? String else { return }
     
     if action == "rewrite", let sentence = body["sentence"] as? String {
-        let options = body["options"] as? [String: String] ?? [:]
-        Task {
-            do {
-                let result = try await rewriteService.rewrite(sentence: sentence, options: options)
-                let json = try JSONEncoder().encode(result)
-                if let jsonString = String(data: json, encoding: .utf8) {
-                    _ = try? await webView?.evaluateJavaScript("window.onGhostlineResult(\(jsonString))")
-                }
-            } catch {
-                let message = jsStringLiteral(error.localizedDescription)
-                _ = try? await webView?.evaluateJavaScript("window.onGhostlineError(\(message))")
-            }
+      let options = body["options"] as? [String: String] ?? [:]
+      Task {
+        do {
+          let result = try await rewriteService.rewrite(sentence: sentence, options: options)
+          let json = try JSONEncoder().encode(result)
+          if let jsonString = String(data: json, encoding: .utf8) {
+            _ = try? await webView?.evaluateJavaScript("window.onGhostlineResult(\(jsonString))")
+          }
+        } catch {
+          let message = jsStringLiteral(error.localizedDescription)
+          _ = try? await webView?.evaluateJavaScript("window.onGhostlineError(\(message))")
         }
+      }
+      return
+    }
+
+    if action == "rewriteFocused" {
+      let options = body["options"] as? [String: String] ?? [:]
+      rewriteFocusedSentence(options: options)
+      return
+    }
+
+    if action == "preferences", let preferences = body["preferences"] as? [String: String] {
+      updatePreferences(preferences)
+      return
+    }
+
+    if action == "requestAccess" {
+      requestAccessibilityAccess()
+      return
     }
   }
 
@@ -193,24 +219,41 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
     } else {
       statusLine.title = "Focus a text field to start."
     }
+    pushContextToWebView()
+    positionWindowIfNeeded()
   }
 
   @objc func rewriteCurrentSentence() {
+    rewriteFocusedSentence(options: [:])
+  }
+
+  private func rewriteFocusedSentence(options: [String: String]) {
     guard !isBusy, let context = focusInspector.captureFocusedTextContext() else { return }
     isBusy = true
     rewriteMenuItem.isEnabled = false
     statusLine.title = "Rewriting..."
+    pushContextToWebView()
     
     Task {
       do {
-        let rewrite = try await rewriteService.rewrite(sentence: context.sentence, options: [:])
+        let rewrite = try await rewriteService.rewrite(sentence: context.sentence, options: options)
         try self.focusInspector.replaceSentence(in: context, with: rewrite.finalText)
+        let payload = RewriteBridgePayload(
+          originalText: context.sentence,
+          improvedText: rewrite.improvedText,
+          finalText: rewrite.finalText
+        )
+        if let json = try? JSONEncoder().encode(payload), let jsonString = String(data: json, encoding: .utf8) {
+          _ = try? await self.webView?.evaluateJavaScript("window.onGhostlineResult(\(jsonString))")
+        }
         self.isBusy = false
         self.statusLine.title = "Done."
         self.refreshFocusedContext()
       } catch {
         self.isBusy = false
         self.statusLine.title = error.localizedDescription
+        let message = jsStringLiteral(error.localizedDescription)
+        _ = try? await self.webView?.evaluateJavaScript("window.onGhostlineError(\(message))")
       }
     }
   }
@@ -221,6 +264,70 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
 
   @objc private func quit() {
     NSApplication.shared.terminate(nil)
+  }
+
+  private func updatePreferences(_ preferences: [String: String]) {
+    if let mode = preferences["displayMode"], let parsedMode = PanelMode(rawValue: mode) {
+      panelMode = parsedMode
+    }
+    positionWindowIfNeeded()
+  }
+
+  private func pushContextToWebView() {
+    let payload = FocusContextPayload(
+      sentence: currentContext?.sentence ?? "",
+      appName: focusInspector.frontmostAppName(),
+      hasAccess: AccessibilityPermission.isTrusted(prompt: false),
+      status: statusLine.title
+    )
+    guard let json = try? JSONEncoder().encode(payload), let jsonString = String(data: json, encoding: .utf8) else {
+      return
+    }
+    _ = webView?.evaluateJavaScript("window.onGhostlineContext(\(jsonString))")
+  }
+
+  private func positionWindowIfNeeded() {
+    guard let window else { return }
+
+    if panelMode == .hidden {
+      window.orderOut(nil)
+      return
+    }
+
+    if panelMode == .docked {
+      if !window.isVisible {
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+      }
+      return
+    }
+
+    guard let frame = currentContext?.elementFrame else {
+      if !window.isVisible {
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+      }
+      return
+    }
+
+    let targetScreen = NSScreen.screens.first { $0.visibleFrame.intersects(frame) } ?? NSScreen.main
+    let visibleFrame = targetScreen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+    let windowSize = window.frame.size
+    let horizontalPadding: CGFloat = 18
+    let verticalPadding: CGFloat = 10
+    var x = frame.maxX + horizontalPadding
+    if x + windowSize.width > visibleFrame.maxX {
+      x = max(visibleFrame.minX + 12, frame.minX - windowSize.width - horizontalPadding)
+    }
+    let preferredY = frame.maxY - 48
+    let y = min(
+      max(visibleFrame.minY + 12, preferredY - windowSize.height),
+      visibleFrame.maxY - windowSize.height - verticalPadding
+    )
+    window.setFrameOrigin(NSPoint(x: x, y: y))
+    if !window.isVisible {
+      window.makeKeyAndOrderFront(nil)
+    }
   }
 }
 
@@ -239,6 +346,7 @@ struct FocusedTextContext: @unchecked Sendable {
   let sentence: String
   let leadingWhitespace: String
   let trailingWhitespace: String
+  let elementFrame: CGRect?
 }
 
 final class FocusInspector {
@@ -260,7 +368,15 @@ final class FocusInspector {
     AXValueGetValue(unsafeDowncast(rangeVal, to: AXValue.self), .cfRange, &range)
     
     guard let context = findSentenceContext(in: fullText, caretOffset: range.location) else { return nil }
-    return FocusedTextContext(element: element, fullText: fullText, replacementRange: context.replacementRange, sentence: context.sentence, leadingWhitespace: context.leadingWhitespace, trailingWhitespace: context.trailingWhitespace)
+    return FocusedTextContext(
+      element: element,
+      fullText: fullText,
+      replacementRange: context.replacementRange,
+      sentence: context.sentence,
+      leadingWhitespace: context.leadingWhitespace,
+      trailingWhitespace: context.trailingWhitespace,
+      elementFrame: elementFrame(for: element)
+    )
   }
 
   func replaceSentence(in context: FocusedTextContext, with rewrittenSentence: String) throws {
@@ -297,6 +413,35 @@ final class FocusInspector {
     let sentence = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     return sentence.isEmpty ? nil : SentenceContext(replacementRange: range, sentence: sentence, leadingWhitespace: lead, trailingWhitespace: trail)
   }
+
+  func frontmostAppName() -> String {
+    NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+  }
+
+  private func elementFrame(for element: AXUIElement) -> CGRect? {
+    var positionValue: CFTypeRef?
+    var sizeValue: CFTypeRef?
+    let positionResult = AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue)
+    let sizeResult = AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue)
+    guard positionResult == .success, sizeResult == .success,
+          let positionValue,
+          let sizeValue,
+          CFGetTypeID(positionValue) == AXValueGetTypeID(),
+          CFGetTypeID(sizeValue) == AXValueGetTypeID() else {
+      return nil
+    }
+
+    let positionAX = unsafeDowncast(positionValue, to: AXValue.self)
+    let sizeAX = unsafeDowncast(sizeValue, to: AXValue.self)
+
+    var point = CGPoint.zero
+    var size = CGSize.zero
+    guard AXValueGetValue(positionAX, .cgPoint, &point), AXValueGetValue(sizeAX, .cgSize, &size) else {
+      return nil
+    }
+
+    return CGRect(origin: point, size: size)
+  }
 }
 
 private struct SentenceContext {
@@ -311,23 +456,44 @@ struct RewriteResult: Codable {
   let finalText: String
 }
 
+private struct RewriteBridgePayload: Codable {
+  let originalText: String
+  let improvedText: String
+  let finalText: String
+}
+
+private struct FocusContextPayload: Codable {
+  let sentence: String
+  let appName: String
+  let hasAccess: Bool
+  let status: String
+}
+
+private enum PanelMode: String {
+  case follow
+  case docked
+  case hidden
+}
+
 final class RewriteService: Sendable {
   func rewrite(sentence: String, options: [String: String]) async throws -> RewriteResult {
     let provider = normalizedOption(options["provider"]) ?? "codex"
     let requestedModel = normalizedOption(options["model"])
+    let tone = normalizedOption(options["tone"]) ?? "natural"
 
     if provider == "codex" {
-      return try await rewriteWithCodex(sentence: sentence, model: requestedModel)
+      return try await rewriteWithCodex(sentence: sentence, model: requestedModel, tone: tone)
     }
 
     let resolved = try resolveProviderOptions(provider: provider, options: options)
     return try await rewriteWithCompatibleProvider(
       sentence: sentence,
-      provider: resolved
+      provider: resolved,
+      tone: tone
     )
   }
 
-  private func rewriteWithCodex(sentence: String, model: String?) async throws -> RewriteResult {
+  private func rewriteWithCodex(sentence: String, model: String?, tone: String) async throws -> RewriteResult {
     let fileManager = FileManager.default
     let tempDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -349,7 +515,7 @@ final class RewriteService: Sendable {
     
     let stdin = Pipe()
     process.standardInput = stdin
-    let prompt = GhostlineFiles.prompt(for: sentence)
+    let prompt = GhostlineFiles.prompt(for: sentence, tone: tone)
     
     try process.run()
     stdin.fileHandleForWriting.write(prompt.data(using: .utf8)!)
@@ -368,15 +534,15 @@ final class RewriteService: Sendable {
     return try JSONDecoder().decode(RewriteResult.self, from: data)
   }
 
-  private func rewriteWithCompatibleProvider(sentence: String, provider: ProviderOptions) async throws -> RewriteResult {
+  private func rewriteWithCompatibleProvider(sentence: String, provider: ProviderOptions, tone: String) async throws -> RewriteResult {
     let improved = try await createCompatibleCompletion(
       provider: provider,
-      instructions: GhostlineFiles.improveInstr,
+      instructions: GhostlineFiles.improveInstruction(for: tone),
       input: sentence
     )
     let final = try await createCompatibleCompletion(
       provider: provider,
-      instructions: GhostlineFiles.humanizeInstr,
+      instructions: GhostlineFiles.humanizeInstruction(for: tone),
       input: "Original: \(sentence)\nImproved: \(improved)"
     )
 
@@ -574,11 +740,16 @@ private let providerPresets: [String: ProviderPreset] = [
 ]
 
 private enum GhostlineFiles {
-  static let improveInstr = "Rewrite the sentence so it reads cleaner, sharper, and more polished without changing the meaning, tone, or sentence count. Return exactly one sentence."
-  static let humanizeInstr = "Make the sentence sound more natural, warm, and human while keeping the original meaning. Avoid cliches and AI-sounding phrasing. Return exactly one sentence."
+  static func improveInstruction(for tone: String) -> String {
+    "Rewrite the sentence so it reads cleaner, sharper, and more polished without changing the meaning, tone, or sentence count. Aim for a \(tone) voice. Return exactly one sentence."
+  }
+
+  static func humanizeInstruction(for tone: String) -> String {
+    "Make the sentence sound more natural, warm, and human while keeping the original meaning. Aim for a \(tone) voice. Avoid cliches and AI-sounding phrasing. Return exactly one sentence."
+  }
   
-  static func prompt(for sentence: String) -> String {
-    "You are Ghostline. Return strict JSON with improvedText and finalText fields.\\nSentence: \(sentence)"
+  static func prompt(for sentence: String, tone: String) -> String {
+    "You are Ghostline. Return strict JSON with improvedText and finalText fields. improvedText should polish the sentence while keeping meaning and aiming for a \(tone) voice. finalText should sound natural and human with the same \(tone) voice.\\nSentence: \(sentence)"
   }
 }
 

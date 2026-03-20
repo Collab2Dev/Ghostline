@@ -1,668 +1,246 @@
-const editor = document.querySelector("#editor");
-const srStatus = document.querySelector("#srStatus");
-const codexBridgeButton = document.querySelector("#codexBridgeButton");
 const codexFocus = document.querySelector("#codexFocus");
-const codexStatus = document.querySelector("#codexStatus");
+const focusAppLabel = document.querySelector("#focusAppLabel");
+const srStatus = document.querySelector("#srStatus");
 const providerStatus = document.querySelector("#providerStatus");
-const yoloStatus = document.querySelector("#yoloStatus");
+const displayStatus = document.querySelector("#displayStatus");
 const rewriteStatus = document.querySelector("#rewriteStatus");
+const rewriteIndicator = document.querySelector("#rewriteIndicator");
 const latestOriginal = document.querySelector("#latestOriginal");
 const latestRewritten = document.querySelector("#latestRewritten");
 const copyLastRewriteButton = document.querySelector("#copyLastRewrite");
-const copyDraftButton = document.querySelector("#copyDraftButton");
+const rewriteFocusButton = document.querySelector("#rewriteFocusButton");
+const requestAccessButton = document.querySelector("#requestAccessButton");
 
-const settingsTrigger = document.querySelector("#settingsTrigger");
-const settingsPanel = document.querySelector("#settingsPanel");
-const closeSettings = document.querySelector("#closeSettings");
 const settingsForm = document.querySelector("#settingsForm");
-const yoloModeInput = document.querySelector("#yoloMode");
 const providerSelect = document.querySelector("#provider");
 const customModelInput = document.querySelector("#customModel");
 const apiKeyInput = document.querySelector("#apiKey");
 const endpointInput = document.querySelector("#endpoint");
+const toneSelect = document.querySelector("#toneSelect");
+const displayModeSelect = document.querySelector("#displayMode");
+const yoloModeInput = document.querySelector("#yoloMode");
 const toast = document.querySelector("#toast");
 
 const providerPresets = {
-  codex: {
-    label: "Codex",
-    defaultModel: ""
-  },
-  openai: {
-    label: "OpenAI",
-    defaultModel: "gpt-5-mini",
-    endpoint: "https://api.openai.com/v1"
-  },
-  claude: {
-    label: "Claude",
-    defaultModel: "claude-sonnet-4-0",
-    endpoint: "https://api.anthropic.com/v1"
-  },
-  gemini: {
-    label: "Gemini",
-    defaultModel: "gemini-2.5-flash",
-    endpoint: "https://generativelanguage.googleapis.com/v1beta/openai"
-  },
-  kimi: {
-    label: "Kimi",
-    defaultModel: "kimi-latest",
-    endpoint: "https://api.moonshot.cn/v1"
-  },
-  qwen: {
-    label: "Qwen",
-    defaultModel: "qwen-plus",
-    endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-  },
-  openrouter: {
-    label: "OpenRouter",
-    defaultModel: "openai/gpt-5-mini",
-    endpoint: "https://openrouter.ai/api/v1"
-  },
-  groq: {
-    label: "Groq",
-    defaultModel: "llama-3.3-70b-versatile",
-    endpoint: "https://api.groq.com/openai/v1"
-  },
-  deepseek: {
-    label: "DeepSeek",
-    defaultModel: "deepseek-chat",
-    endpoint: "https://api.deepseek.com/v1"
-  },
-  ollama: {
-    label: "Ollama",
-    defaultModel: "llama3.1:8b",
-    endpoint: "http://localhost:11434/v1"
-  },
-  custom: {
-    label: "Custom",
-    defaultModel: ""
-  }
+  codex: { label: "Codex", defaultModel: "" },
+  openai: { label: "OpenAI", defaultModel: "gpt-5-mini", endpoint: "https://api.openai.com/v1" },
+  claude: { label: "Claude", defaultModel: "claude-sonnet-4-0", endpoint: "https://api.anthropic.com/v1" },
+  gemini: { label: "Gemini", defaultModel: "gemini-2.5-flash", endpoint: "https://generativelanguage.googleapis.com/v1beta/openai" },
+  kimi: { label: "Kimi", defaultModel: "kimi-latest", endpoint: "https://api.moonshot.cn/v1" },
+  qwen: { label: "Qwen", defaultModel: "qwen-plus", endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" },
+  openrouter: { label: "OpenRouter", defaultModel: "openai/gpt-5-mini", endpoint: "https://openrouter.ai/api/v1" },
+  groq: { label: "Groq", defaultModel: "llama-3.3-70b-versatile", endpoint: "https://api.groq.com/openai/v1" },
+  deepseek: { label: "DeepSeek", defaultModel: "deepseek-chat", endpoint: "https://api.deepseek.com/v1" },
+  ollama: { label: "Ollama", defaultModel: "llama3.1:8b", endpoint: "http://localhost:11434/v1" },
+  custom: { label: "Custom", defaultModel: "" }
 };
 
 let isRewriting = false;
 let lastRewriteSnapshot = null;
-let lastFocusedSentence = "";
-let yoloTimer = null;
+let currentFocusSentence = "";
 
 const settings = {
-  yoloMode: localStorage.getItem("ghostline_yolo") === "true",
-  provider: normalizeProviderKey(
-    localStorage.getItem("ghostline_provider") || localStorage.getItem("ghostline_model") || "codex"
-  ),
+  provider: normalizeProviderKey(localStorage.getItem("ghostline_provider") || "codex"),
   customModel: localStorage.getItem("ghostline_customModel") || "",
   apiKey: localStorage.getItem("ghostline_apiKey") || "",
-  endpoint: localStorage.getItem("ghostline_endpoint") || ""
+  endpoint: localStorage.getItem("ghostline_endpoint") || "",
+  tone: localStorage.getItem("ghostline_tone") || "natural",
+  displayMode: localStorage.getItem("ghostline_displayMode") || "follow",
+  yoloMode: localStorage.getItem("ghostline_yolo") === "true"
 };
 
-if (!isKnownProvider(settings.provider)) {
-  settings.provider = "codex";
-}
-
-yoloModeInput.checked = settings.yoloMode;
 providerSelect.value = settings.provider;
 customModelInput.value = settings.customModel;
 apiKeyInput.value = settings.apiKey;
 endpointInput.value = settings.endpoint;
-
-settingsTrigger.addEventListener("click", () => settingsPanel.classList.toggle("sr-only"));
-closeSettings.addEventListener("click", () => settingsPanel.classList.add("sr-only"));
+toneSelect.value = settings.tone;
+displayModeSelect.value = settings.displayMode;
+yoloModeInput.checked = settings.yoloMode;
 
 settingsForm.addEventListener("input", () => {
-  settings.yoloMode = yoloModeInput.checked;
   settings.provider = normalizeProviderKey(providerSelect.value);
   settings.customModel = customModelInput.value.trim();
   settings.apiKey = apiKeyInput.value.trim();
   settings.endpoint = endpointInput.value.trim();
+  settings.tone = toneSelect.value;
+  settings.displayMode = displayModeSelect.value;
+  settings.yoloMode = yoloModeInput.checked;
 
-  localStorage.setItem("ghostline_yolo", String(settings.yoloMode));
   localStorage.setItem("ghostline_provider", settings.provider);
-  localStorage.setItem("ghostline_model", settings.provider);
   localStorage.setItem("ghostline_customModel", settings.customModel);
   localStorage.setItem("ghostline_apiKey", settings.apiKey);
   localStorage.setItem("ghostline_endpoint", settings.endpoint);
+  localStorage.setItem("ghostline_tone", settings.tone);
+  localStorage.setItem("ghostline_displayMode", settings.displayMode);
+  localStorage.setItem("ghostline_yolo", String(settings.yoloMode));
 
-  updateStatusChips();
+  updateStatus();
+  sendPreferences();
 });
 
-document.addEventListener("click", (event) => {
-  if (
-    !settingsPanel.classList.contains("sr-only") &&
-    !settingsPanel.contains(event.target) &&
-    !settingsTrigger.contains(event.target)
-  ) {
-    settingsPanel.classList.add("sr-only");
-  }
-});
-
-editor.addEventListener("keydown", async (event) => {
-  if (event.key === "Tab") {
-    event.preventDefault();
-    await rewriteCurrentSentence();
+rewriteFocusButton.addEventListener("click", () => {
+  if (!window.webkit?.messageHandlers?.ghostline) {
+    showToast("Focused rewriting is only available inside the macOS app.");
     return;
   }
 
-  if (event.key === "Enter" && settings.yoloMode) {
-    clearTimeout(yoloTimer);
-    await rewriteCurrentSentence();
-  }
-});
+  isRewriting = true;
+  updateStatus();
+  srStatus.textContent = "Rewriting focused sentence.";
 
-editor.addEventListener("input", () => {
-  updateCodexBridgeState();
-
-  if (settings.yoloMode) {
-    clearTimeout(yoloTimer);
-    yoloTimer = setTimeout(async () => {
-      await rewriteCurrentSentence();
-    }, 1500);
-  }
-});
-
-editor.addEventListener("paste", (event) => {
-  event.preventDefault();
-  insertPlainTextAtSelection(event.clipboardData?.getData("text/plain") || "");
-  updateCodexBridgeState();
-});
-
-editor.addEventListener("keyup", (event) => {
-  if (event.key !== "Tab" && event.key !== "Enter") {
-    updateCodexBridgeState();
-  }
-});
-
-editor.addEventListener("mouseup", updateCodexBridgeState);
-document.addEventListener("selectionchange", updateCodexBridgeState);
-codexBridgeButton.addEventListener("click", handleCodexBridgeCopy);
-copyLastRewriteButton.addEventListener("click", handleCopyLatestRewrite);
-copyDraftButton.addEventListener("click", handleCopyDraft);
-
-updateStatusChips();
-updateCodexBridgeState();
-
-async function rewriteCurrentSentence() {
-  if (isRewriting) {
-    return;
-  }
-
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || !editor.contains(selection.anchorNode)) {
-    showToast("Place the caret inside the editor first.");
-    return;
-  }
-
-  const content = editor.textContent || "";
-  const caretOffset = getCaretOffset(editor);
-  const sentenceRange = findSentenceRange(content, caretOffset);
-
-  if (!sentenceRange || !sentenceRange.text.trim()) {
-    showToast("Ghostline could not find a sentence at this caret position.");
-    return;
-  }
-
-  const domRange = resolveDomRange(sentenceRange);
-  const shimmer = domRange ? wrapRangeInShimmer(domRange) : null;
-
-  try {
-    setBusyState(true);
-    setRewriteStatus("Polishing");
-    srStatus.textContent = "Rewriting current sentence.";
-
-    const rewrite = await rewriteSentence(sentenceRange.text.trim());
-    const rewrittenSentence = rewrite.finalText;
-
-    if (!rewrittenSentence) {
-      throw new Error("Rewrite returned an empty sentence.");
-    }
-
-    const finalResult =
-      sentenceRange.leadingWhitespace + rewrittenSentence + sentenceRange.trailingWhitespace;
-
-    if (shimmer?.parentNode) {
-      shimmer.replaceWith(document.createTextNode(finalResult));
-      placeCaretAfterNode(editor, finalResult, sentenceRange.start);
-    } else {
-      editor.textContent =
-        content.slice(0, sentenceRange.start) + finalResult + content.slice(sentenceRange.end);
-      placeCaretAtOffset(editor, sentenceRange.start + finalResult.length);
-    }
-
-    lastRewriteSnapshot = {
-      original: sentenceRange.text.trim(),
-      rewritten: rewrittenSentence,
-      provider: rewrite.provider
-    };
-
-    latestOriginal.textContent = lastRewriteSnapshot.original;
-    latestRewritten.textContent = lastRewriteSnapshot.rewritten;
-    srStatus.textContent = `Sentence rewritten with ${labelForProviderKey(rewrite.provider)}.`;
-    setRewriteStatus("Done");
-    updateCodexBridgeState();
-  } catch (error) {
-    console.error(error);
-    if (shimmer?.parentNode) {
-      shimmer.replaceWith(document.createTextNode(shimmer.textContent || sentenceRange.text));
-    }
-    showToast(error?.message || "Rewrite failed.");
-    srStatus.textContent = "Rewrite failed.";
-    setRewriteStatus("Error");
-  } finally {
-    setBusyState(false);
-  }
-}
-
-function setBusyState(nextBusy) {
-  isRewriting = nextBusy;
-  editor.setAttribute("aria-busy", String(nextBusy));
-  codexBridgeButton.disabled = nextBusy;
-  copyLastRewriteButton.disabled = nextBusy || !lastRewriteSnapshot;
-  copyDraftButton.disabled = nextBusy;
-}
-
-function updateStatusChips() {
-  providerStatus.textContent = providerLabel(settings);
-  yoloStatus.textContent = settings.yoloMode ? "YOLO" : "Manual";
-}
-
-function setRewriteStatus(status) {
-  rewriteStatus.textContent = status;
-}
-
-async function rewriteSentence(sentence) {
-  const options = buildRewriteOptions();
-  const requestedProvider = normalizeProviderKey(options.provider) || "codex";
-
-  if (window.webkit?.messageHandlers?.ghostline) {
-    return new Promise((resolve, reject) => {
-      window.onGhostlineResult = (result) => {
-        resolve({
-          provider: normalizeProviderKey(result?.provider) || requestedProvider,
-          finalText: String(result?.finalText || "").trim()
-        });
-      };
-      window.onGhostlineError = (message) => {
-        reject(new Error(message || "Rewrite failed."));
-      };
-
-      window.webkit.messageHandlers.ghostline.postMessage({
-        action: "rewrite",
-        sentence,
-        options
-      });
-    });
-  }
-
-  const response = await fetch("/api/rewrite", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ sentence, ...options })
+  window.webkit.messageHandlers.ghostline.postMessage({
+    action: "rewriteFocused",
+    options: buildRewriteOptions()
   });
+});
 
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload?.error || "Rewrite failed.");
-  }
-
-  return {
-    provider: normalizeProviderKey(payload?.provider) || requestedProvider,
-    finalText: typeof payload?.finalText === "string" ? payload.finalText.trim() : ""
-  };
-}
-
-function buildRewriteOptions() {
-  const preset = providerPresets[settings.provider] || providerPresets.custom;
-
-  if (settings.provider === "codex") {
-    return {
-      provider: "codex",
-      model: settings.customModel || preset.defaultModel
-    };
-  }
-
-  return {
-    provider: settings.provider,
-    model: settings.customModel || preset.defaultModel,
-    apiKey: settings.apiKey,
-    endpoint: settings.endpoint || preset.endpoint
-  };
-}
-
-async function handleCodexBridgeCopy() {
-  const context = getCodexBridgeContext();
-  if (!context.draft) {
-    codexStatus.textContent = "Add some writing first so Ghostline has something to hand off.";
-    return;
-  }
-
-  try {
-    await copyTextToClipboard(buildCodexBridgePrompt(context));
-    codexStatus.textContent = context.focusSentence
-      ? "Codex handoff copied with the focused sentence and full draft."
-      : "Codex handoff copied with the full draft.";
-  } catch (error) {
-    console.error(error);
-    codexStatus.textContent = "Clipboard access failed. Try again in a browser tab with clipboard access.";
-  }
-}
-
-async function handleCopyLatestRewrite() {
-  if (!lastRewriteSnapshot) {
+copyLastRewriteButton.addEventListener("click", async () => {
+  if (!lastRewriteSnapshot?.rewritten) {
     showToast("No rewrite to copy yet.");
     return;
   }
 
-  await copyTextToClipboard(lastRewriteSnapshot.rewritten);
-  showToast("Latest rewrite copied.");
-}
+  await copyText(lastRewriteSnapshot.rewritten);
+  showToast("Copied latest rewrite.");
+});
 
-async function handleCopyDraft() {
-  const draft = cleanDraft(editor.textContent || "");
-  if (!draft) {
-    showToast("There is no draft to copy yet.");
+requestAccessButton.addEventListener("click", () => {
+  if (!window.webkit?.messageHandlers?.ghostline) {
+    showToast("Accessibility requests are only available inside the macOS app.");
     return;
   }
 
-  await copyTextToClipboard(draft);
-  showToast("Draft copied.");
-}
+  window.webkit.messageHandlers.ghostline.postMessage({ action: "requestAccess" });
+});
 
-function updateCodexBridgeState() {
-  const context = getCodexBridgeContext();
-  codexBridgeButton.disabled = isRewriting || !context.draft;
-  copyLastRewriteButton.disabled = isRewriting || !lastRewriteSnapshot;
-  codexFocus.textContent =
-    context.focusSentence || "No active sentence yet. Ghostline will package the whole draft.";
-}
+updateStatus();
+sendPreferences();
 
-function getCodexBridgeContext() {
-  const draft = cleanDraft(editor.textContent || "");
-  const activeSentence = getActiveSentence(draft);
-  const latestRewrite =
-    lastRewriteSnapshot && draft.includes(lastRewriteSnapshot.rewritten) ? lastRewriteSnapshot : null;
+window.onGhostlineContext = (payload) => {
+  const context = typeof payload === "string" ? JSON.parse(payload) : payload;
+  currentFocusSentence = context.sentence || "";
 
+  if (currentFocusSentence) {
+    codexFocus.textContent = currentFocusSentence;
+    codexFocus.classList.remove("empty");
+  } else {
+    codexFocus.textContent = context.hasAccess
+      ? "Click into some text and Ghostline will follow the sentence under your caret."
+      : "Grant Accessibility access so Ghostline can read the sentence under your caret.";
+    codexFocus.classList.add("empty");
+  }
+
+  focusAppLabel.textContent = context.appName
+    ? `Following text in ${context.appName}.`
+    : context.hasAccess
+      ? "Focus a text field in any app."
+      : "Accessibility access is required.";
+
+  srStatus.textContent = context.status || "Ready for a sentence.";
+  rewriteFocusButton.disabled = !context.hasAccess || !currentFocusSentence || isRewriting;
+};
+
+window.onGhostlineResult = (result) => {
+  const payload = typeof result === "string" ? JSON.parse(result) : result;
+  lastRewriteSnapshot = {
+    original: payload.originalText || currentFocusSentence || "Unknown",
+    rewritten: payload.finalText || "",
+    provider: payload.provider || settings.provider
+  };
+
+  latestOriginal.textContent = lastRewriteSnapshot.original;
+  latestRewritten.textContent =
+    lastRewriteSnapshot.rewritten || "Your last rewrite will appear here after Ghostline updates the sentence in place.";
+  isRewriting = false;
+  srStatus.textContent = `Rewritten with ${labelForProviderKey(lastRewriteSnapshot.provider)}.`;
+  updateStatus();
+  showToast("Focused sentence rewritten.");
+};
+
+window.onGhostlineError = (message) => {
+  isRewriting = false;
+  rewriteStatus.textContent = "Error";
+  rewriteIndicator.className = "status-dot error";
+  srStatus.textContent = "Rewrite failed.";
+  showToast(typeof message === "string" ? message : "Rewrite failed.");
+  rewriteFocusButton.disabled = !currentFocusSentence;
+};
+
+function buildRewriteOptions() {
+  const preset = providerPresets[settings.provider] || providerPresets.custom;
   return {
-    draft,
-    focusSentence: activeSentence,
-    latestRewrite
+    provider: settings.provider,
+    model: settings.customModel || preset.defaultModel,
+    apiKey: settings.apiKey,
+    endpoint: settings.endpoint || preset.endpoint || "",
+    tone: settings.tone,
+    yoloMode: String(settings.yoloMode)
   };
 }
 
-function getActiveSentence(draft) {
-  if (!draft) {
-    lastFocusedSentence = "";
-    return "";
+function sendPreferences() {
+  if (!window.webkit?.messageHandlers?.ghostline) {
+    return;
   }
 
-  const selection = window.getSelection();
-  if (selection && selection.rangeCount > 0 && editor.contains(selection.anchorNode)) {
-    const sentenceRange = findSentenceRange(draft, getCaretOffset(editor));
-    if (sentenceRange?.text) {
-      lastFocusedSentence = sentenceRange.text.trim();
-      return lastFocusedSentence;
+  window.webkit.messageHandlers.ghostline.postMessage({
+    action: "preferences",
+    preferences: {
+      displayMode: settings.displayMode,
+      yoloMode: String(settings.yoloMode)
     }
-  }
-
-  if (lastFocusedSentence && draft.includes(lastFocusedSentence)) {
-    return lastFocusedSentence;
-  }
-
-  if (lastRewriteSnapshot?.rewritten && draft.includes(lastRewriteSnapshot.rewritten)) {
-    return lastRewriteSnapshot.rewritten;
-  }
-
-  return "";
+  });
 }
 
-function buildCodexBridgePrompt({ draft, focusSentence, latestRewrite }) {
-  const sections = [
-    "You are picking up a writing pass that started in Ghostline.",
-    "Keep the writer's meaning, perspective, and tone intact while improving the draft at the paragraph level.",
-    "",
-    "Please do the following:",
-    "- tighten clarity, rhythm, and transitions",
-    "- preserve specific language when it is already working",
-    "- call out only the most meaningful changes",
-    ""
-  ];
-
-  if (focusSentence) {
-    sections.push("Focus sentence:");
-    sections.push(focusSentence);
-    sections.push("");
-  }
-
-  if (latestRewrite) {
-    sections.push("Latest Ghostline rewrite:");
-    if (latestRewrite.provider) {
-      sections.push(`Provider: ${labelForProviderKey(latestRewrite.provider)}`);
-    }
-    sections.push(`Original: ${latestRewrite.original}`);
-    sections.push(`Rewritten: ${latestRewrite.rewritten}`);
-    sections.push("");
-  }
-
-  sections.push("Current draft:");
-  sections.push("<draft>");
-  sections.push(draft);
-  sections.push("</draft>");
-  sections.push("");
-  sections.push("Return:");
-  sections.push("1. A revised version of the draft.");
-  sections.push("2. Three short notes on the most important edits.");
-
-  return sections.join("\n");
+function updateStatus() {
+  providerStatus.textContent = settings.customModel || labelForProviderKey(settings.provider);
+  displayStatus.textContent = capitalize(settings.displayMode);
+  rewriteStatus.textContent = isRewriting ? "Rewriting" : "Ready";
+  rewriteIndicator.className = `status-dot ${isRewriting ? "polishing" : "live"}`;
+  copyLastRewriteButton.disabled = !lastRewriteSnapshot?.rewritten;
+  rewriteFocusButton.disabled = isRewriting || !currentFocusSentence;
 }
 
-function providerLabel(currentSettings) {
-  return currentSettings.customModel || labelForProviderKey(currentSettings.provider);
-}
-
-function labelForProviderKey(provider) {
-  const preset = providerPresets[normalizeProviderKey(provider)] || providerPresets.custom;
-  return preset.label;
-}
-
-function showToast(message) {
-  toast.textContent = message;
-  toast.classList.remove("sr-only");
-  window.clearTimeout(showToast.timer);
-  showToast.timer = window.setTimeout(() => {
-    toast.classList.add("sr-only");
-  }, 2600);
-}
-
-function cleanDraft(value) {
-  return value.replace(/\u00a0/g, " ").replace(/\r\n?/g, "\n").trim();
-}
-
-async function copyTextToClipboard(text) {
+async function copyText(text) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
     return;
   }
 
-  const textArea = document.createElement("textarea");
-  textArea.value = text;
-  textArea.setAttribute("readonly", "");
-  textArea.style.position = "absolute";
-  textArea.style.left = "-9999px";
-  document.body.append(textArea);
-  textArea.select();
+  const input = document.createElement("textarea");
+  input.value = text;
+  document.body.append(input);
+  input.select();
   document.execCommand("copy");
-  textArea.remove();
+  input.remove();
 }
 
-function insertPlainTextAtSelection(text) {
-  const selection = window.getSelection();
-
-  if (!selection || selection.rangeCount === 0 || !editor.contains(selection.anchorNode)) {
-    editor.textContent = `${editor.textContent || ""}${text}`;
-    placeCaretAtOffset(editor, (editor.textContent || "").length);
-    return;
-  }
-
-  const range = selection.getRangeAt(0);
-  range.deleteContents();
-  const textNode = document.createTextNode(text);
-  range.insertNode(textNode);
-  range.setStartAfter(textNode);
-  range.collapse(true);
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
-function resolveDomRange(sentenceRange) {
-  const range = document.createRange();
-  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
-  let currentPos = 0;
-  let startNode = null;
-  let startOffset = 0;
-  let endNode = null;
-  let endOffset = 0;
-  let node = walker.nextNode();
-
-  while (node) {
-    const length = node.textContent.length;
-    const nextPos = currentPos + length;
-
-    if (!startNode && sentenceRange.start >= currentPos && sentenceRange.start < nextPos) {
-      startNode = node;
-      startOffset = sentenceRange.start - currentPos;
-    }
-
-    if (sentenceRange.end > currentPos && sentenceRange.end <= nextPos) {
-      endNode = node;
-      endOffset = sentenceRange.end - currentPos;
-      break;
-    }
-
-    currentPos = nextPos;
-    node = walker.nextNode();
-  }
-
-  if (!startNode || !endNode) {
-    return null;
-  }
-
-  range.setStart(startNode, startOffset);
-  range.setEnd(endNode, endOffset);
-  return range;
-}
-
-function wrapRangeInShimmer(range) {
-  const span = document.createElement("span");
-  span.className = "shimmer";
-
-  try {
-    range.surroundContents(span);
-    return span;
-  } catch (error) {
-    console.warn("Failed to surround contents for shimmer effect.", error);
-    return null;
-  }
-}
-
-function getCaretOffset(root) {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    return 0;
-  }
-
-  const range = selection.getRangeAt(0).cloneRange();
-  range.selectNodeContents(root);
-  range.setEnd(selection.focusNode, selection.focusOffset);
-  return range.toString().length;
-}
-
-function placeCaretAtOffset(root, offset) {
-  const selection = window.getSelection();
-  const range = document.createRange();
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let current = 0;
-  let node = walker.nextNode();
-
-  while (node) {
-    const next = current + node.textContent.length;
-    if (offset <= next) {
-      range.setStart(node, Math.max(0, offset - current));
-      range.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(range);
-      return;
-    }
-    current = next;
-    node = walker.nextNode();
-  }
-
-  range.selectNodeContents(root);
-  range.collapse(false);
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
-function placeCaretAfterNode(root, replacementText, startOffset) {
-  const normalizedLength = replacementText.length;
-  placeCaretAtOffset(root, startOffset + normalizedLength);
-}
-
-function findSentenceRange(text, caretOffset) {
-  const safeCaret = Math.max(0, Math.min(caretOffset, text.length));
-  let start = safeCaret;
-  while (start > 0) {
-    const char = text[start - 1];
-    if (char === "." || char === "!" || char === "?" || char === "\n") {
-      break;
-    }
-    start -= 1;
-  }
-
-  let end = safeCaret;
-  while (end < text.length) {
-    const char = text[end];
-    if (char === "." || char === "!" || char === "?") {
-      end += 1;
-      break;
-    }
-    if (char === "\n") {
-      break;
-    }
-    end += 1;
-  }
-
-  const raw = text.slice(start, end);
-  const leadingWhitespaceMatch = raw.match(/^\s*/u);
-  const trailingWhitespaceMatch = raw.match(/\s*$/u);
-  const leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[0] : "";
-  const trailingWhitespace = trailingWhitespaceMatch ? trailingWhitespaceMatch[0] : "";
-  const trimmed = raw.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  return {
-    start,
-    end,
-    text: raw,
-    leadingWhitespace,
-    trailingWhitespace
-  };
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.remove("hidden");
+  clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => {
+    toast.classList.add("hidden");
+  }, 2600);
 }
 
 function normalizeProviderKey(value) {
-  if (typeof value !== "string") {
-    return "";
+  if (!value) {
+    return "codex";
   }
 
-  const normalized = value.trim().toLowerCase();
-
+  const normalized = String(value).trim().toLowerCase();
   if (normalized === "anthropic") {
     return "claude";
   }
 
-  return normalized;
+  return providerPresets[normalized] ? normalized : "codex";
 }
 
-function isKnownProvider(value) {
-  return Boolean(providerPresets[normalizeProviderKey(value)]);
+function labelForProviderKey(provider) {
+  return providerPresets[provider]?.label || "Ghostline";
+}
+
+function capitalize(value) {
+  return value ? value[0].toUpperCase() + value.slice(1) : "";
 }

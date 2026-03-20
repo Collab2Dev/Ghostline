@@ -16,6 +16,7 @@ const host = process.env.HOST || "127.0.0.1";
 const codexBinary =
   process.env.CODEX_BIN || (existsSync(bundledCodexBinary) ? bundledCodexBinary : "codex");
 const codexModel = process.env.CODEX_MODEL || process.env.OPENAI_MODEL || "";
+
 const providerPresets = {
   codex: {
     label: "Codex",
@@ -89,12 +90,6 @@ const mimeTypes = {
   ".txt": "text/plain; charset=utf-8"
 };
 
-const improveInstructions =
-  "You are an invisible writing assistant. Rewrite the user's sentence so it reads cleaner, sharper, and more polished without changing the meaning, point of view, tone, or sentence count. Return exactly one sentence and nothing else.";
-
-const humanizeInstructions =
-  "You are an AI humanizer. Make the sentence sound more natural, warm, and human while keeping the original meaning intact. Avoid cliches, corporate filler, em dashes, and obviously AI-sounding phrasing. Return exactly one sentence and nothing else.";
-
 createServer(async (request, response) => {
   try {
     if (request.method === "POST" && request.url === "/api/rewrite") {
@@ -131,6 +126,7 @@ async function handleRewrite(request, response) {
   const customModel = normalizeValue(body?.model) || null;
   const customApiKey = normalizeValue(body?.apiKey) || null;
   const customEndpoint = normalizeValue(body?.endpoint) || null;
+  const tone = normalizeTone(body?.tone);
 
   if (!sentence) {
     respondJson(response, 400, { error: "A sentence is required." });
@@ -150,7 +146,8 @@ async function handleRewrite(request, response) {
       provider: requestedProvider,
       model: customModel,
       apiKey: customApiKey,
-      endpoint: customEndpoint
+      endpoint: customEndpoint,
+      tone
     });
 
     respondJson(response, 200, {
@@ -180,15 +177,13 @@ async function rewriteSentence(sentence, options = {}) {
 
 async function rewriteWithFallbackProviders(sentence, options = {}) {
   const providers = resolveProviderOrder();
-
   if (providers.length === 0) {
     throw new Error(
-      "No rewrite backend is configured. Use Codex, OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY."
+      "No rewrite backend is configured. Use Codex, OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, or another provider key."
     );
   }
 
   let lastError;
-
   for (const provider of providers) {
     try {
       return await rewriteWithNamedProvider(sentence, options, provider);
@@ -201,49 +196,30 @@ async function rewriteWithFallbackProviders(sentence, options = {}) {
   throw lastError instanceof Error ? lastError : new Error("Rewrite failed.");
 }
 
-async function rewriteWithNamedProvider(sentence, options = {}, provider) {
+async function rewriteWithNamedProvider(sentence, options, provider) {
   if (provider === "codex") {
-    const rewrite = await rewriteWithCodex(sentence, {
-      ...options,
-      provider
-    });
-
-    return {
-      provider,
-      improvedText: rewrite.improvedText,
-      finalText: rewrite.finalText
-    };
+    const rewrite = await rewriteWithCodex(sentence, { ...options, provider });
+    return { provider, improvedText: rewrite.improvedText, finalText: rewrite.finalText };
   }
 
-  const rewrite = await rewriteWithCompatibleProvider(sentence, {
-    ...options,
-    provider
-  });
-
-  return {
-    provider,
-    improvedText: rewrite.improvedText,
-    finalText: rewrite.finalText
-  };
+  const rewrite = await rewriteWithCompatibleProvider(sentence, { ...options, provider });
+  return { provider, improvedText: rewrite.improvedText, finalText: rewrite.finalText };
 }
 
 function resolveProviderOrder() {
   const providers = [];
-
   if (isCodexConfigured()) {
     providers.push("codex");
   }
 
-  if (hasConfiguredCredential("openai")) {
-    providers.push("openai");
+  for (const provider of ["openai", "claude", "gemini", "kimi", "qwen", "openrouter", "groq", "deepseek"]) {
+    if (hasConfiguredCredential(provider)) {
+      providers.push(provider);
+    }
   }
 
-  if (hasConfiguredCredential("claude")) {
-    providers.push("claude");
-  }
-
-  if (hasConfiguredCredential("gemini")) {
-    providers.push("gemini");
+  if (providerPresets.ollama.endpoint) {
+    providers.push("ollama");
   }
 
   return providers;
@@ -259,20 +235,14 @@ function normalizeProviderName(value) {
   }
 
   const normalized = value.trim().toLowerCase();
-
   if (normalized === "anthropic") {
     return "claude";
   }
-
   if (normalized === "auto") {
     return "auto";
   }
 
-  if (providerPresets[normalized]) {
-    return normalized;
-  }
-
-  return null;
+  return providerPresets[normalized] ? normalized : null;
 }
 
 function isCodexConfigured() {
@@ -286,23 +256,21 @@ function hasConfiguredCredential(provider) {
 
 async function rewriteWithCompatibleProvider(sentence, options = {}) {
   const resolved = resolveProviderOptions(options);
+  const tone = normalizeTone(options.tone);
 
   const improvedText = await createCompatibleChatCompletion({
-    instructions: improveInstructions,
+    instructions: improveInstructionsForTone(tone),
     input: sentence,
     options: resolved
   });
 
   const finalText = await createCompatibleChatCompletion({
-    instructions: humanizeInstructions,
+    instructions: humanizeInstructionsForTone(tone),
     input: `Original sentence:\n${sentence}\n\nImproved sentence:\n${improvedText}`,
     options: resolved
   });
 
-  return {
-    improvedText,
-    finalText
-  };
+  return { improvedText, finalText };
 }
 
 async function createCompatibleChatCompletion({ instructions, input, options }) {
@@ -330,14 +298,8 @@ async function createCompatibleChatCompletion({ instructions, input, options }) 
     body: JSON.stringify({
       model: options.model,
       messages: [
-        {
-          role: "system",
-          content: instructions
-        },
-        {
-          role: "user",
-          content: input
-        }
+        { role: "system", content: instructions },
+        { role: "user", content: input }
       ],
       temperature: 0.4,
       max_completion_tokens: 180
@@ -345,7 +307,6 @@ async function createCompatibleChatCompletion({ instructions, input, options }) 
   });
 
   const payload = await apiResponse.json();
-
   if (!apiResponse.ok) {
     const message =
       payload?.error?.message ||
@@ -374,25 +335,19 @@ async function rewriteWithCodex(sentence, options = {}) {
   ];
 
   const model = options.model || codexModel;
-
   if (model) {
     args.push("--model", model);
   }
-
   args.push("-");
 
   try {
     await runCodexExec({
       args,
-      prompt: buildCodexPrompt(sentence)
+      prompt: buildCodexPrompt(sentence, normalizeTone(options.tone))
     });
 
     const payload = JSON.parse(await readFile(outputPath, "utf8"));
-
-    if (
-      typeof payload?.improvedText !== "string" ||
-      typeof payload?.finalText !== "string"
-    ) {
+    if (typeof payload?.improvedText !== "string" || typeof payload?.finalText !== "string") {
       throw new Error("Codex returned an invalid rewrite payload.");
     }
 
@@ -407,15 +362,15 @@ async function rewriteWithCodex(sentence, options = {}) {
   }
 }
 
-function buildCodexPrompt(sentence) {
+function buildCodexPrompt(sentence, tone) {
   return [
     "You are Ghostline, a silent writing assistant.",
     "Return strict JSON that matches the provided schema.",
     "Do not use tools, commands, or file access.",
     "",
     "Produce two fields:",
-    "1. improvedText: Rewrite the sentence so it reads cleaner, sharper, and more polished without changing the meaning, point of view, tone, or sentence count.",
-    "2. finalText: Starting from improvedText, make it sound more natural, warm, and human while keeping the original meaning intact. Avoid cliches, corporate filler, em dashes, and obviously AI-sounding phrasing.",
+    `1. improvedText: Rewrite the sentence so it reads cleaner, sharper, and more polished without changing the meaning, point of view, tone, or sentence count. Aim for a ${tone} voice.`,
+    `2. finalText: Starting from improvedText, make it sound more natural, warm, and human while keeping the original meaning intact. Aim for a ${tone} voice. Avoid cliches, corporate filler, em dashes, and obviously AI-sounding phrasing.`,
     "",
     "Both fields must be exactly one sentence.",
     `Sentence: ${sentence}`
@@ -432,6 +387,7 @@ function runCodexExec({ args, prompt }) {
       },
       stdio: ["pipe", "pipe", "pipe"]
     });
+
     let stdout = "";
     let stderr = "";
 
@@ -444,18 +400,15 @@ function runCodexExec({ args, prompt }) {
     });
 
     child.on("error", reject);
-
     child.on("close", (code) => {
       if (code === 0) {
         resolve();
         return;
       }
 
-      const error = new Error(
-        `Codex exited with code ${code || 1}.\n${[stdout, stderr].filter(Boolean).join("\n")}`
+      reject(
+        new Error(`Codex exited with code ${code || 1}.\n${[stdout, stderr].filter(Boolean).join("\n")}`)
       );
-
-      reject(error);
     });
 
     child.stdin.end(prompt);
@@ -468,11 +421,9 @@ function formatCodexError(error) {
   if (/enoent|not found/i.test(message)) {
     return "Codex CLI is not installed. Install Codex or set CODEX_BIN before starting Ghostline.";
   }
-
   if (/codex login|sign in|authentication/i.test(message)) {
     return "Codex is not signed in. Run `codex login` first, then restart Ghostline.";
   }
-
   if (/lookup address information|websocket|network/i.test(message)) {
     return "Codex could not reach its service. Check your internet connection and try again.";
   }
@@ -482,7 +433,6 @@ function formatCodexError(error) {
 
 function extractChatCompletionText(payload) {
   const content = payload?.choices?.[0]?.message?.content;
-
   if (typeof content === "string" && content.trim()) {
     return content;
   }
@@ -492,7 +442,6 @@ function extractChatCompletionText(payload) {
       .map((item) => (typeof item?.text === "string" ? item.text : ""))
       .join(" ")
       .trim();
-
     if (text) {
       return text;
     }
@@ -510,12 +459,7 @@ function cleanSentence(value) {
 }
 
 function resolveProviderOptions(options = {}) {
-  const providerKey = normalizeProviderName(options.provider);
-
-  if (!providerKey || providerKey === "auto" || providerKey === "codex") {
-    throw new Error("Unsupported rewrite provider.");
-  }
-
+  const providerKey = normalizeProviderName(options.provider) || "openai";
   const preset = providerPresets[providerKey];
   const endpoint = normalizeValue(options.endpoint) || preset.endpoint;
   const model = normalizeValue(options.model) || preset.defaultModel;
@@ -526,11 +470,9 @@ function resolveProviderOptions(options = {}) {
   if (!endpoint) {
     throw new Error(`No endpoint is configured for ${preset.label}.`);
   }
-
   if (!model) {
     throw new Error(`Pick a model name for ${preset.label}.`);
   }
-
   if (!apiKey && providerKey !== "ollama") {
     throw new Error(`Add an API key for ${preset.label}.`);
   }
@@ -547,8 +489,20 @@ function normalizeValue(value) {
   if (typeof value !== "string") {
     return "";
   }
-
   return value.trim();
+}
+
+function normalizeTone(value) {
+  const tone = normalizeValue(value).toLowerCase();
+  return tone || "natural";
+}
+
+function improveInstructionsForTone(tone) {
+  return `You are an invisible writing assistant. Rewrite the user's sentence so it reads cleaner, sharper, and more polished without changing the meaning, point of view, tone, or sentence count. Aim for a ${tone} voice. Return exactly one sentence and nothing else.`;
+}
+
+function humanizeInstructionsForTone(tone) {
+  return `You are an AI humanizer. Make the sentence sound more natural, warm, and human while keeping the original meaning intact. Aim for a ${tone} voice. Avoid cliches, corporate filler, em dashes, and obviously AI-sounding phrasing. Return exactly one sentence and nothing else.`;
 }
 
 async function serveStatic(request, response) {
@@ -592,7 +546,6 @@ function respondText(response, statusCode, message) {
 
 async function readJsonBody(request) {
   const chunks = [];
-
   for await (const chunk of request) {
     chunks.push(chunk);
   }

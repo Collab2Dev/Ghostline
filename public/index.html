@@ -10,14 +10,16 @@
     <div class="ambient"></div>
 
     <div class="shell">
-      <header class="hero panel">
-        <div class="hero-copy">
-          <p class="eyebrow">Ghostline for macOS</p>
-          <h1>Quietly rewrite the sentence under your cursor.</h1>
-          <p class="hero-text">
-            Ghostline lives like a normal Mac app, stays beside your writing, and uses local Codex
-            or your chosen provider without turning your document into a suggestion circus.
-          </p>
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">
+            <span></span>
+            <span></span>
+          </div>
+          <div>
+            <p class="eyebrow">Ghostline for macOS</p>
+            <h1>Quietly rewrite what you are typing.</h1>
+          </div>
         </div>
 
         <div class="status-cluster">
@@ -26,236 +28,234 @@
             <strong id="providerStatus">Codex</strong>
           </div>
           <div class="status-pill">
-            <span>Mode</span>
+            <span>Display</span>
             <strong id="displayStatus">Follow</strong>
           </div>
-          <div class="status-pill status-pill-live">
+          <div class="status-pill">
             <span class="status-dot live" id="rewriteIndicator"></span>
             <strong id="rewriteStatus">Ready</strong>
           </div>
         </div>
       </header>
 
-      <main class="stack">
-        <section class="panel permissions-panel">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Permissions</p>
-              <h2>Let macOS trust Ghostline once, then get out of the way.</h2>
-            </div>
-            <button class="primary-button" id="requestAllPermissionsButton" type="button">
-              Request All Permissions
-            </button>
-          </div>
-
-          <p class="assist-copy" id="permissionSummary">
-            Accessibility rewrites in place. Automation and Screen Recording make the desktop app
-            feel like a complete Mac utility instead of a browser mockup.
-          </p>
-
-          <div class="permission-grid">
-            <button class="permission-tile" id="requestAccessibilityButton" type="button">
-              <span class="permission-kicker">Read + Write</span>
-              <span class="permission-name">Accessibility</span>
-              <strong class="permission-status" id="accessibilityStatus">Needed</strong>
-              <small>Follow the focused field and replace the sentence directly in Word, Notes, and more.</small>
-            </button>
-
-            <button class="permission-tile" id="requestAutomationButton" type="button">
-              <span class="permission-kicker">System Control</span>
-              <span class="permission-name">Automation</span>
-              <strong class="permission-status" id="automationStatus">Needed</strong>
-              <small>Unlock deeper desktop actions so Ghostline behaves like a real assistant, not a floating webpage.</small>
-            </button>
-
-            <button class="permission-tile" id="requestScreenRecordingButton" type="button">
-              <span class="permission-kicker">Screen Context</span>
-              <span class="permission-name">Screen Recording</span>
-              <strong class="permission-status" id="screenRecordingStatus">Needed</strong>
-              <small>Prepare richer on-screen awareness around your writing surface when the app needs it.</small>
-            </button>
-          </div>
-        </section>
-
-        <section class="panel focus-panel">
-          <div class="section-head compact">
-            <div>
-              <p class="eyebrow">Focused Sentence</p>
-              <h2>Ghostline follows the line under your caret.</h2>
-            </div>
-            <button class="primary-button" id="rewriteFocusButton" type="button">
-              Rewrite Now
-            </button>
-          </div>
-
-          <p id="focusAppLabel" class="meta-line">Focus a text field in any app.</p>
-
-          <div class="focus-box">
-            <p id="codexFocus" class="focus-text empty">
-              Click into some text and Ghostline will follow the sentence under your caret.
-            </p>
-          </div>
-
-          <div class="focus-actions">
-            <p id="srStatus" class="assist-copy" aria-live="polite">Ready for a sentence.</p>
-            <button class="secondary-button" id="copyLastRewrite" type="button">Copy Latest Rewrite</button>
-          </div>
-        </section>
-
-        <div class="two-up">
-          <section class="panel controls-panel">
-            <div class="section-head compact">
+      <main class="workspace">
+        <section class="hero-stack">
+          <section class="card focus-card">
+            <div class="card-head">
               <div>
-                <p class="eyebrow">Rewrite Controls</p>
-                <h2>Choose how Ghostline should sound.</h2>
+                <p class="eyebrow">Live Focus</p>
+                <h2>Sentence under the caret</h2>
               </div>
+              <button class="ghost-button" id="requestAllPermissionsButton" type="button">
+                Request All
+              </button>
             </div>
 
-            <div class="control-grid">
-              <label class="field">
-                <span>Tone</span>
-                <select id="toneSelect">
-                  <option value="natural">Natural</option>
-                  <option value="clear">Clear</option>
-                  <option value="confident">Confident</option>
-                  <option value="concise">Concise</option>
-                  <option value="warm">Warm</option>
-                </select>
-              </label>
+            <p class="assist-copy" id="permissionSummary">
+              Grant Accessibility first, then finish Automation and Screen Recording so Ghostline behaves like a full native companion.
+            </p>
 
-              <label class="field">
-                <span>Display</span>
-                <select id="displayMode">
-                  <option value="follow">Follow</option>
-                  <option value="docked">Docked</option>
-                  <option value="hidden">Hidden</option>
-                </select>
-              </label>
+            <div class="permission-grid">
+              <button class="permission-tile" id="requestAccessibilityButton" type="button">
+                <span class="permission-kicker">Read + Write</span>
+                <span class="permission-name">Accessibility</span>
+                <strong class="permission-status" id="accessibilityStatus">Needed</strong>
+                <small>Read the focused sentence and replace it directly in place.</small>
+              </button>
+
+              <button class="permission-tile" id="requestAutomationButton" type="button">
+                <span class="permission-kicker">System Control</span>
+                <span class="permission-name">Automation</span>
+                <strong class="permission-status" id="automationStatus">Needed</strong>
+                <small>Open the macOS privacy flow and unlock deeper desktop actions.</small>
+              </button>
+
+              <button class="permission-tile" id="requestScreenRecordingButton" type="button">
+                <span class="permission-kicker">Screen Context</span>
+                <span class="permission-name">Screen Recording</span>
+                <strong class="permission-status" id="screenRecordingStatus">Needed</strong>
+                <small>Prepare richer on-screen awareness when Ghostline needs more context.</small>
+              </button>
             </div>
 
-            <div class="note-panel">
-              <p class="note-title">Keyboard</p>
-              <p class="assist-copy">
-                Press <kbd>Control</kbd> + <kbd>Option</kbd> + <kbd>G</kbd> anywhere. Turn on YOLO
-                below if you want Ghostline to auto-polish after a short pause.
-              </p>
+            <div class="focus-surface">
+              <p id="focusAppLabel" class="meta-line">Focus a text field in any app.</p>
+              <div class="focus-box">
+                <p id="codexFocus" class="focus-text empty">
+                  Click into some text and Ghostline will follow the sentence under your caret.
+                </p>
+              </div>
+              <p id="srStatus" class="assist-copy" aria-live="polite">Ready for a sentence.</p>
+            </div>
+
+            <div class="action-row">
+              <button class="primary-button" id="rewriteFocusButton" type="button">
+                Rewrite Focused Sentence
+              </button>
+              <button class="secondary-button" id="copyLastRewrite" type="button">Copy Result</button>
             </div>
           </section>
 
-          <section class="panel result-panel">
-            <div class="section-head compact">
+          <section class="card lab-card">
+            <div class="card-head">
               <div>
-                <p class="eyebrow">Latest Rewrite</p>
-                <h2>What changed most recently.</h2>
+                <p class="eyebrow">Quick Test</p>
+                <h2>Paste text here to demo the model stack</h2>
+              </div>
+              <span class="micro-badge">For screenshots and QA</span>
+            </div>
+
+            <label class="paste-frame" for="pasteInput">
+              <span class="paste-label">Paste a sentence or short paragraph</span>
+              <textarea
+                id="pasteInput"
+                rows="5"
+                placeholder="Paste something rough here, then let Ghostline polish it without touching the active app."
+              ></textarea>
+            </label>
+
+            <div class="tone-chips" id="toneChips" role="tablist" aria-label="Tone presets">
+              <button class="tone-chip active" type="button" data-tone="natural">Natural</button>
+              <button class="tone-chip" type="button" data-tone="clear">Clear</button>
+              <button class="tone-chip" type="button" data-tone="confident">Confident</button>
+              <button class="tone-chip" type="button" data-tone="concise">Concise</button>
+              <button class="tone-chip" type="button" data-tone="warm">Warm</button>
+            </div>
+
+            <div class="action-row action-row-tight">
+              <button class="ink-button" id="rewritePastedButton" type="button">Rewrite Pasted Text</button>
+              <button class="ghost-button" id="clearPasteButton" type="button">Clear</button>
+            </div>
+
+            <div class="result-tape">
+              <div class="tape-labels">
+                <span>Original</span>
+                <span>Ghostline</span>
+              </div>
+              <div class="compare-grid compare-grid-split">
+                <div class="compare-block">
+                  <p id="latestOriginal">No rewrite yet.</p>
+                </div>
+                <div class="compare-block active">
+                  <p id="latestRewritten">
+                    Your last rewrite will appear here after Ghostline updates the sentence in place.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <aside class="inspector">
+          <section class="card connection-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Connection</p>
+                <h2>Choose Codex login or API keys</h2>
               </div>
             </div>
 
-            <div class="compare-grid">
-              <div class="compare-block">
-                <span class="compare-label">Original</span>
-                <p id="latestOriginal">No rewrite yet.</p>
+            <div class="account-grid">
+              <div class="account-card account-card-primary">
+                <p class="account-label">Codex Login</p>
+                <strong id="codexStatus">Checking Codex...</strong>
+                <p id="codexStatusDetail" class="assist-copy">
+                  Ghostline can use your local Codex login with no API key pasted into the app.
+                </p>
+                <div class="account-actions">
+                  <button class="primary-button" id="codexLoginButton" type="button">Log In to Codex</button>
+                  <button class="secondary-button" id="refreshConnectionButton" type="button">Refresh</button>
+                </div>
               </div>
-              <div class="compare-block active">
-                <span class="compare-label">Ghostline</span>
-                <p id="latestRewritten">
-                  Your last rewrite will appear here after Ghostline updates the sentence in place.
+
+              <div class="account-card">
+                <p class="account-label">Current Auth Mode</p>
+                <strong id="providerModeLabel">Codex Login</strong>
+                <p id="providerHint" class="assist-copy">
+                  Switch the provider below whenever you want to use API keys instead of your local Codex session.
                 </p>
               </div>
             </div>
           </section>
-        </div>
 
-        <section class="panel account-panel">
-          <div class="section-head compact">
-            <div>
-              <p class="eyebrow">Connection</p>
-              <h2>Choose Codex login or API-key providers.</h2>
-            </div>
-          </div>
-
-          <div class="account-grid">
-            <div class="account-card account-card-primary">
-              <p class="account-label">Codex Login</p>
-              <strong id="codexStatus">Checking Codex...</strong>
-              <p id="codexStatusDetail" class="assist-copy">
-                Ghostline can use your local Codex login with no API key pasted into the app.
-              </p>
-              <div class="account-actions">
-                <button class="primary-button" id="codexLoginButton" type="button">Log In to Codex</button>
-                <button class="secondary-button" id="refreshConnectionButton" type="button">Refresh Status</button>
+          <section class="card settings-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Model Stack</p>
+                <h2>Provider, model, credentials</h2>
               </div>
+              <span class="micro-badge" id="modelFamilyLabel">Codex CLI</span>
             </div>
 
-            <div class="account-card">
-              <p class="account-label">Current Auth Mode</p>
-              <strong id="providerModeLabel">Codex Login</strong>
-              <p id="providerHint" class="assist-copy">
-                Switch the provider below whenever you want to use API keys instead of your local Codex session.
-              </p>
-            </div>
-          </div>
-        </section>
+            <form id="settingsForm" class="settings-list">
+              <label class="field field-inline">
+                <span>Provider</span>
+                <select id="provider">
+                  <option value="auto">Auto</option>
+                  <option value="codex">Codex</option>
+                  <option value="openai">OpenAI API</option>
+                  <option value="claude">Claude</option>
+                  <option value="gemini">Gemini</option>
+                  <option value="kimi">Kimi</option>
+                  <option value="qwen">Qwen</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="groq">Groq</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="ollama">Ollama</option>
+                  <option value="custom">Custom Compatible</option>
+                </select>
+              </label>
 
-        <section class="panel settings-panel">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Provider Setup</p>
-              <h2>Use local Codex or bring your own model.</h2>
-            </div>
-          </div>
+              <div class="tone-grid">
+                <label class="field">
+                  <span>Tone</span>
+                  <select id="toneSelect">
+                    <option value="natural">Natural</option>
+                    <option value="clear">Clear</option>
+                    <option value="confident">Confident</option>
+                    <option value="concise">Concise</option>
+                    <option value="warm">Warm</option>
+                  </select>
+                </label>
 
-          <form id="settingsForm" class="settings-list">
-            <label class="field">
-              <span>Provider</span>
-              <select id="provider">
-                <option value="codex">Codex</option>
-                <option value="openai">OpenAI API</option>
-                <option value="claude">Claude</option>
-                <option value="gemini">Gemini</option>
-                <option value="kimi">Kimi</option>
-                <option value="qwen">Qwen</option>
-                <option value="openrouter">OpenRouter</option>
-                <option value="groq">Groq</option>
-                <option value="deepseek">DeepSeek</option>
-                <option value="ollama">Ollama</option>
-                <option value="custom">Custom Compatible</option>
-              </select>
-            </label>
+                <label class="field">
+                  <span>Display</span>
+                  <select id="displayMode">
+                    <option value="follow">Follow</option>
+                    <option value="docked">Docked</option>
+                    <option value="hidden">Hidden</option>
+                  </select>
+                </label>
+              </div>
 
-            <label class="field">
-              <span>Model</span>
-              <input id="customModel" type="text" list="modelSuggestions" placeholder="Default for provider" />
-            </label>
+              <label class="field">
+                <span>Model</span>
+                <input id="customModel" type="text" list="modelSuggestions" placeholder="Default for provider" />
+              </label>
+              <datalist id="modelSuggestions"></datalist>
 
-            <datalist id="modelSuggestions">
-              <option value="gpt-5-mini"></option>
-              <option value="claude-sonnet-4-0"></option>
-              <option value="gemini-2.5-flash"></option>
-              <option value="kimi-latest"></option>
-              <option value="qwen-plus"></option>
-              <option value="deepseek-chat"></option>
-              <option value="llama3.1:8b"></option>
-            </datalist>
+              <div class="provider-matrix" id="providerMatrix" aria-live="polite"></div>
 
-            <label class="field api-field">
-              <span>API Key</span>
-              <input id="apiKey" type="password" placeholder="Saved locally on this Mac" />
-            </label>
+              <label class="field api-field">
+                <span>API Key</span>
+                <input id="apiKey" type="password" placeholder="Saved locally on this Mac" />
+              </label>
 
-            <label class="field api-field">
-              <span>Endpoint</span>
-              <input id="endpoint" type="url" placeholder="Optional custom base URL" />
-            </label>
+              <label class="field api-field">
+                <span>Endpoint</span>
+                <input id="endpoint" type="url" placeholder="Optional custom base URL" />
+              </label>
 
-            <label class="toggle-row">
-              <span>
-                <strong>YOLO Mode</strong>
-                <small>Automatically rewrite after a short pause while you keep typing.</small>
-              </span>
-              <input id="yoloMode" type="checkbox" />
-            </label>
-          </form>
-        </section>
+              <label class="toggle-row">
+                <span>
+                  <strong>YOLO Mode</strong>
+                  <small>Auto-run after a short pause while you keep typing.</small>
+                </span>
+                <input id="yoloMode" type="checkbox" />
+              </label>
+            </form>
+          </section>
+        </aside>
       </main>
     </div>
 

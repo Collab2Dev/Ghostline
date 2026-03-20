@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const publicDir = path.join(__dirname, "public");
+const publicDir = process.env.PUBLIC_DIR || path.join(__dirname, "public");
 const codexSchemaPath = path.join(__dirname, "codex-rewrite.schema.json");
 const bundledCodexBinary = "/Applications/Codex.app/Contents/Resources/codex";
 const port = Number(process.env.PORT || 3000);
@@ -64,6 +64,9 @@ async function handleRewrite(request, response) {
   }
 
   const sentence = typeof body?.sentence === "string" ? body.sentence.trim() : "";
+  const customModel = typeof body?.model === "string" ? body.model : null;
+  const customApiKey = typeof body?.apiKey === "string" ? body.apiKey : null;
+  const customEndpoint = typeof body?.endpoint === "string" ? body.endpoint : null;
 
   if (!sentence) {
     respondJson(response, 400, { error: "A sentence is required." });
@@ -71,7 +74,11 @@ async function handleRewrite(request, response) {
   }
 
   try {
-    const rewrite = await rewriteSentence(sentence);
+    const rewrite = await rewriteSentence(sentence, {
+      model: customModel,
+      apiKey: customApiKey,
+      endpoint: customEndpoint
+    });
 
     respondJson(response, 200, {
       improvedText: rewrite.improvedText,
@@ -85,28 +92,30 @@ async function handleRewrite(request, response) {
   }
 }
 
-async function rewriteSentence(sentence) {
+async function rewriteSentence(sentence, options = {}) {
   try {
-    return await rewriteWithCodex(sentence);
+    return await rewriteWithCodex(sentence, options);
   } catch (error) {
-    if (process.env.OPENAI_API_KEY) {
+    if (options.apiKey || process.env.OPENAI_API_KEY) {
       console.warn("Codex rewrite failed, falling back to the OpenAI API.", error);
-      return rewriteWithOpenAI(sentence);
+      return rewriteWithOpenAI(sentence, options);
     }
 
     throw error;
   }
 }
 
-async function rewriteWithOpenAI(sentence) {
+async function rewriteWithOpenAI(sentence, options = {}) {
   const improvedText = await createOpenAIResponse({
     instructions: improveInstructions,
-    input: sentence
+    input: sentence,
+    options
   });
 
   const finalText = await createOpenAIResponse({
     instructions: humanizeInstructions,
-    input: `Original sentence:\n${sentence}\n\nImproved sentence:\n${improvedText}`
+    input: `Original sentence:\n${sentence}\n\nImproved sentence:\n${improvedText}`,
+    options
   });
 
   return {
@@ -115,13 +124,16 @@ async function rewriteWithOpenAI(sentence) {
   };
 }
 
-async function createOpenAIResponse({ instructions, input }) {
-  const model = process.env.OPENAI_MODEL || "gpt-5-mini";
+async function createOpenAIResponse({ instructions, input, options = {} }) {
+  const model = options.model || process.env.OPENAI_MODEL || "gpt-5-mini";
+  const apiKey = options.apiKey || process.env.OPENAI_API_KEY;
+  const baseUrl = options.endpoint || "https://api.openai.com/v1";
+  const url = baseUrl.endsWith("/responses") ? baseUrl : `${baseUrl.replace(/\/$/, "")}/responses`;
 
-  const apiResponse = await fetch("https://api.openai.com/v1/responses", {
+  const apiResponse = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
@@ -146,7 +158,7 @@ async function createOpenAIResponse({ instructions, input }) {
   return cleanSentence(extractOutputText(payload));
 }
 
-async function rewriteWithCodex(sentence) {
+async function rewriteWithCodex(sentence, options = {}) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ghostline-codex-"));
   const outputPath = path.join(tempDir, "rewrite.json");
   const args = [
@@ -163,8 +175,10 @@ async function rewriteWithCodex(sentence) {
     outputPath
   ];
 
-  if (codexModel) {
-    args.push("--model", codexModel);
+  const model = options.model || codexModel;
+
+  if (model) {
+    args.push("--model", model);
   }
 
   args.push("-");
@@ -172,7 +186,8 @@ async function rewriteWithCodex(sentence) {
   try {
     await runCodexExec({
       args,
-      prompt: buildCodexPrompt(sentence)
+      prompt: buildCodexPrompt(sentence),
+      options
     });
 
     const payload = JSON.parse(await readFile(outputPath, "utf8"));
@@ -210,7 +225,7 @@ function buildCodexPrompt(sentence) {
   ].join("\n");
 }
 
-function runCodexExec({ args, prompt }) {
+function runCodexExec({ args, prompt, options = {} }) {
   return new Promise((resolve, reject) => {
     const child = spawn(codexBinary, args, {
       cwd: __dirname,

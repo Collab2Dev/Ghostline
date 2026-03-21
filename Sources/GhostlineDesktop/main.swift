@@ -157,6 +157,7 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
       window.subtitle = "Desktop Writing Assistant"
       window.titleVisibility = .hidden
       window.titlebarAppearsTransparent = true
+      window.isMovableByWindowBackground = false
       window.isReleasedWhenClosed = false
       window.backgroundColor = .clear
       window.isOpaque = false
@@ -177,7 +178,7 @@ final class GhostlineDesktopApp: NSObject, NSApplicationDelegate, WKScriptMessag
       visualEffect.addSubview(webView)
       webView.translatesAutoresizingMaskIntoConstraints = false
       NSLayoutConstraint.activate([
-        webView.topAnchor.constraint(equalTo: visualEffect.topAnchor),
+        webView.topAnchor.constraint(equalTo: visualEffect.safeAreaLayoutGuide.topAnchor),
         webView.bottomAnchor.constraint(equalTo: visualEffect.bottomAnchor),
         webView.leadingAnchor.constraint(equalTo: visualEffect.leadingAnchor),
         webView.trailingAnchor.constraint(equalTo: visualEffect.trailingAnchor)

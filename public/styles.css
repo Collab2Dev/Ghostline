@@ -62,14 +62,31 @@ body {
 }
 
 button,
+a,
 input,
 select,
-textarea {
+textarea,
+label,
+summary,
+[role="button"] {
   font: inherit;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
 }
 
-button {
+button,
+a,
+.permission-tile,
+.tone-chip,
+[role="button"] {
   cursor: pointer;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="url"],
+textarea {
+  cursor: text;
 }
 
 .ambient {
@@ -95,6 +112,7 @@ button {
 
 .topbar {
   position: relative;
+  z-index: 2;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -251,6 +269,8 @@ h2 {
 }
 
 .workspace {
+  position: relative;
+  z-index: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(330px, 430px);
@@ -447,6 +467,19 @@ h2 {
 .primary-button,
 .secondary-button,
 .ghost-button,
+.ink-button,
+.permission-tile,
+.tone-chip,
+.toggle-row input[type="checkbox"] {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+.primary-button,
+.secondary-button,
+.ghost-button,
 .ink-button {
   min-height: 46px;
   padding: 0 18px;
@@ -479,6 +512,24 @@ h2 {
   box-shadow: 0 6px 14px rgba(74, 103, 245, 0.18);
 }
 
+.primary-button:focus-visible,
+.secondary-button:focus-visible,
+.ghost-button:focus-visible,
+.ink-button:focus-visible,
+.permission-tile:focus-visible,
+.tone-chip:focus-visible,
+.toggle-row input[type="checkbox"]:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+input[type="text"]:focus-visible,
+input[type="password"]:focus-visible,
+input[type="url"]:focus-visible {
+  outline: none;
+  box-shadow:
+    var(--shadow-input),
+    0 0 0 4px rgba(74, 103, 245, 0.16);
+}
+
 .secondary-button {
   background: rgba(255, 255, 255, 0.8);
   color: var(--ink);
@@ -496,6 +547,29 @@ h2 {
   color: #fff;
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: 0 12px 24px rgba(18, 32, 59, 0.16);
+}
+
+#codexLoginButton,
+#copyLastRewrite {
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+#codexLoginButton:hover:not(:disabled) {
+  background: linear-gradient(180deg, #6a84ff, var(--accent-strong));
+  box-shadow: 0 14px 28px rgba(74, 103, 245, 0.28);
+}
+
+#copyLastRewrite:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(74, 103, 245, 0.2);
+  box-shadow: 0 10px 22px rgba(18, 32, 59, 0.08);
+}
+
+#codexLoginButton:active:not(:disabled),
+#copyLastRewrite:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 button:disabled {

@@ -182,6 +182,7 @@ renderRewritePanels();
 renderBridgeUI();
 updateStatus();
 sendPreferences();
+syncBridgeAvailability();
 
 settingsForm.addEventListener("input", () => {
   settings.provider = normalizeProviderKey(providerSelect.value);
@@ -507,7 +508,7 @@ async function handleRewrite() {
 
 async function performRewriteRequest(focusedText) {
   // TODO: Move this into a dedicated backend/native rewrite endpoint if you want one unified flow.
-  if (window.webkit?.messageHandlers?.ghostline) {
+  if (hasNativeBridge()) {
     window.webkit.messageHandlers.ghostline.postMessage({
       action: "rewriteFocused",
       options: buildRewriteOptions()
@@ -568,7 +569,7 @@ function buildRewriteOptions() {
 }
 
 function sendPreferences() {
-  if (!window.webkit?.messageHandlers?.ghostline) {
+  if (!hasNativeBridge()) {
     return;
   }
 
@@ -592,7 +593,8 @@ function requestPermission(permission) {
 }
 
 function postToGhostline(message) {
-  if (!window.webkit?.messageHandlers?.ghostline) {
+  if (!hasNativeBridge()) {
+    console.warn("Ghostline native bridge is missing.", message);
     return false;
   }
 
@@ -609,7 +611,7 @@ function updateStatus(forcedState = "") {
   rewriteStatus.textContent = forcedState || (isRewriting ? "Rewriting" : settings.yoloMode ? "Auto" : "Ready");
   rewriteIndicator.className = `status-dot ${forcedState === "Error" ? "error" : isRewriting ? "polishing" : "live"}`;
   modelFamilyLabel.textContent = providerPresets[settings.provider]?.family || "Provider";
-  copyLastRewriteButton.disabled = !lastRewriteSnapshot?.rewritten;
+  copyLastRewriteButton.disabled = false;
   copyCodexBridgeButton.disabled = !resolveBridgeDraft();
   copyHumanizerBridgeButton.disabled = !resolveBridgeDraft();
   rewriteFocusButton.disabled = isRewriting || !currentFocusSentence || !permissionState.accessibility;
@@ -649,6 +651,7 @@ function updateRequestAllPermissionsButtonState() {
 function updateConnectionUI() {
   const usingCodex = settings.provider === "codex";
   const usingAuto = settings.provider === "auto";
+  const bridgeReady = hasNativeBridge();
 
   providerModeLabel.textContent = usingCodex
     ? "Codex Login"
@@ -662,14 +665,18 @@ function updateConnectionUI() {
       ? "Auto mode uses whatever local Codex session or provider credentials are available."
       : `Using ${labelForProviderKey(settings.provider)}. The API key and endpoint fields below are active.`;
 
-  codexStatus.textContent = authState.codexLoggedIn
-    ? "Codex Connected"
-    : authState.codexAvailable
-      ? "Codex Needs Login"
-      : "Codex Missing";
-  codexStatusDetail.textContent = authState.codexStatus;
+  codexStatus.textContent = !bridgeReady
+    ? "Bridge Missing"
+    : authState.codexLoggedIn
+      ? "Codex Connected"
+      : authState.codexAvailable
+        ? "Codex Needs Login"
+        : "Codex Missing";
+  codexStatusDetail.textContent = bridgeReady
+    ? authState.codexStatus
+    : "This window is not connected to the native Ghostline bridge.";
 
-  codexLoginButton.disabled = !authState.codexAvailable;
+  codexLoginButton.disabled = false;
   apiFieldNodes.forEach((node) => {
     node.classList.toggle("is-inactive", usingCodex);
   });
@@ -748,6 +755,15 @@ function setRewritePanel(node, text, fallback) {
   node.textContent = value || fallback;
   node.classList.toggle("is-empty", !value);
   node.closest(".compare-block")?.classList.toggle("is-empty", !value);
+}
+
+function hasNativeBridge() {
+  return Boolean(window.webkit?.messageHandlers?.ghostline);
+}
+
+function syncBridgeAvailability() {
+  document.body.classList.toggle("has-native-bridge", hasNativeBridge());
+  document.body.classList.toggle("missing-native-bridge", !hasNativeBridge());
 }
 
 function renderBridgeUI() {

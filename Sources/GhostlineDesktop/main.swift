@@ -1035,19 +1035,23 @@ final class RewriteService: Sendable {
     }
     
     let data = try Data(contentsOf: outputURL)
-    return try JSONDecoder().decode(RewriteResult.self, from: data)
+    let payload = try JSONDecoder().decode(RewriteResult.self, from: data)
+    return RewriteResult(
+      improvedText: GhostlineFiles.cleanRewriteText(payload.improvedText),
+      finalText: GhostlineFiles.cleanRewriteText(payload.finalText)
+    )
   }
 
   private func rewriteWithCompatibleProvider(sentence: String, provider: ProviderOptions, tone: String) async throws -> RewriteResult {
     let improved = try await createCompatibleCompletion(
       provider: provider,
-      instructions: GhostlineFiles.improveInstruction(for: tone),
+      instructions: GhostlineFiles.improveInstruction(for: tone, draft: sentence),
       input: sentence
     )
     let final = try await createCompatibleCompletion(
       provider: provider,
-      instructions: GhostlineFiles.humanizeInstruction(for: tone),
-      input: "Original: \(sentence)\nImproved: \(improved)"
+      instructions: GhostlineFiles.humanizeInstruction(for: tone, draft: sentence),
+      input: "Original draft:\n\(sentence)\n\nImproved draft:\n\(improved)"
     )
 
     return RewriteResult(improvedText: improved, finalText: final)
@@ -1081,7 +1085,7 @@ final class RewriteService: Sendable {
         ["role": "user", "content": input]
       ],
       "temperature": 0.4,
-      "max_completion_tokens": 180
+      "max_completion_tokens": GhostlineFiles.completionTokenBudget(for: input)
     ]
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -1095,16 +1099,16 @@ final class RewriteService: Sendable {
 
     let content = ((json?["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any])?["content"]
     if let text = content as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      return text.trimmingCharacters(in: .whitespacesAndNewlines)
+      return GhostlineFiles.cleanRewriteText(text)
     }
 
     if let contentArray = content as? [[String: Any]] {
       let text = contentArray
         .compactMap { $0["text"] as? String }
-        .joined(separator: " ")
+        .joined()
         .trimmingCharacters(in: .whitespacesAndNewlines)
       if !text.isEmpty {
-        return text
+        return GhostlineFiles.cleanRewriteText(text)
       }
     }
 
@@ -1244,16 +1248,122 @@ private let providerPresets: [String: ProviderPreset] = [
 ]
 
 private enum GhostlineFiles {
-  static func improveInstruction(for tone: String) -> String {
-    "Rewrite the sentence so it reads cleaner, sharper, and more polished without changing the meaning, tone, or sentence count. Aim for a \(tone) voice. Return exactly one sentence."
+  static func improveInstruction(for tone: String, draft: String) -> String {
+    [
+      "You are an invisible writing assistant.",
+      "Rewrite the user's draft so it reads cleaner, sharper, and more polished.",
+      "Keep the writer's meaning, point of view, and register intact.",
+      "Tighten clarity, rhythm, and transitions.",
+      "Preserve specific language when it is already working.",
+      "Do not add claims, facts, or examples.",
+      "If the draft is already formal or analytical, keep that register instead of making it casual.",
+      toneInstruction(for: tone),
+      structureInstruction(for: draft),
+      "Return only the revised draft."
+    ].joined(separator: " ")
   }
 
-  static func humanizeInstruction(for tone: String) -> String {
-    "Make the sentence sound more natural, warm, and human while keeping the original meaning. Aim for a \(tone) voice. Avoid cliches and AI-sounding phrasing. Return exactly one sentence."
+  static func humanizeInstruction(for tone: String, draft: String) -> String {
+    [
+      "You are an editorial writing assistant.",
+      "Make the draft feel more natural and fluid while keeping its original meaning, argument, and register intact.",
+      "Reduce stiffness, but do not flatten the writer's voice.",
+      "Keep strong phrases that are already working.",
+      "Avoid cliches, corporate filler, em dashes, and obviously AI-sounding phrasing.",
+      "Do not make formal writing sound overly casual or chatty.",
+      toneInstruction(for: tone),
+      structureInstruction(for: draft),
+      "Return only the revised draft."
+    ].joined(separator: " ")
   }
   
   static func prompt(for sentence: String, tone: String) -> String {
-    "You are Ghostline. Return strict JSON with improvedText and finalText fields. improvedText should polish the sentence while keeping meaning and aiming for a \(tone) voice. finalText should sound natural and human with the same \(tone) voice.\\nSentence: \(sentence)"
+    [
+      "You are Ghostline.",
+      "Return strict JSON with improvedText and finalText fields.",
+      "Do not use tools, commands, or file access.",
+      "",
+      "Editing goals:",
+      "- Keep the writer's meaning, point of view, and register intact.",
+      "- Tighten clarity, rhythm, and transitions.",
+      "- Preserve specific language when it is already working.",
+      "- Do not add claims, facts, or examples.",
+      "- Avoid cliches, corporate filler, em dashes, and generic AI phrasing.",
+      "- If the draft is already formal or analytical, keep it formal rather than making it chatty.",
+      "- \(toneInstruction(for: tone))",
+      "- \(structureInstruction(for: sentence))",
+      "",
+      "Produce two fields:",
+      "1. improvedText: Make the draft cleaner, sharper, and more polished while preserving meaning and structure.",
+      "2. finalText: Starting from improvedText, make the draft feel more natural and fluid without flattening its original voice or register.",
+      "",
+      "Return only the JSON object.",
+      "Draft:\n\(sentence)"
+    ].joined(separator: "\n")
+  }
+
+  static func cleanRewriteText(_ value: String) -> String {
+    value
+      .replacingOccurrences(of: "\r\n", with: "\n")
+      .replacingOccurrences(of: "\r", with: "\n")
+      .split(separator: "\n", omittingEmptySubsequences: false)
+      .map { line in
+        line
+          .replacingOccurrences(of: #"[ \t]{2,}"#, with: " ", options: .regularExpression)
+          .trimmingCharacters(in: .whitespaces)
+      }
+      .joined(separator: "\n")
+      .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+      .replacingOccurrences(of: #"^["'“”]+|["'“”]+$"#, with: "", options: .regularExpression)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  static func completionTokenBudget(for input: String) -> Int {
+    let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    let approxTokens = max(1, (trimmed.count + 3) / 4)
+    return min(900, max(220, approxTokens + 160))
+  }
+
+  private static func toneInstruction(for tone: String) -> String {
+    switch tone.lowercased() {
+    case "clear":
+      return "Favor simpler syntax and cleaner transitions."
+    case "confident":
+      return "Use confident phrasing without overselling or exaggerating."
+    case "concise":
+      return "Trim needless words and prefer tighter phrasing."
+    case "warm":
+      return "Keep the language warm and approachable without sounding sugary."
+    case "formal":
+      return "Keep the register formal, analytical, and precise."
+    default:
+      return "Sound natural and human without flattening the original voice."
+    }
+  }
+
+  private static func structureInstruction(for draft: String) -> String {
+    let cleaned = cleanRewriteText(draft)
+    let paragraphCount = max(1, cleaned.components(separatedBy: "\n\n").filter { !$0.isEmpty }.count)
+    let sentenceCount = sentenceCount(in: cleaned)
+
+    if paragraphCount > 1 {
+      return "Preserve the overall prose structure and keep roughly the same \(paragraphCount)-paragraph shape. Do not turn it into bullets or headings."
+    }
+
+    if sentenceCount > 1 {
+      return "Keep it as a compact paragraph. Preserve the overall sentence flow unless a small merge or split clearly improves readability."
+    }
+
+    return "Return exactly one sentence."
+  }
+
+  private static func sentenceCount(in value: String) -> Int {
+    guard let regex = try? NSRegularExpression(pattern: #"[.!?]+(?=\s|$)"#) else {
+      return 0
+    }
+
+    let range = NSRange(value.startIndex..<value.endIndex, in: value)
+    return regex.numberOfMatches(in: value, range: range)
   }
 }
 

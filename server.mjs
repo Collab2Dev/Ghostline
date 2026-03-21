@@ -257,16 +257,17 @@ function hasConfiguredCredential(provider) {
 async function rewriteWithCompatibleProvider(sentence, options = {}) {
   const resolved = resolveProviderOptions(options);
   const tone = normalizeTone(options.tone);
+  const shape = describeDraftShape(sentence);
 
   const improvedText = await createCompatibleChatCompletion({
-    instructions: improveInstructionsForTone(tone),
+    instructions: improveInstructionsForTone(tone, shape),
     input: sentence,
     options: resolved
   });
 
   const finalText = await createCompatibleChatCompletion({
-    instructions: humanizeInstructionsForTone(tone),
-    input: `Original sentence:\n${sentence}\n\nImproved sentence:\n${improvedText}`,
+    instructions: humanizeInstructionsForTone(tone, shape),
+    input: `Original draft:\n${sentence}\n\nImproved draft:\n${improvedText}`,
     options: resolved
   });
 
@@ -302,7 +303,7 @@ async function createCompatibleChatCompletion({ instructions, input, options }) 
         { role: "user", content: input }
       ],
       temperature: 0.4,
-      max_completion_tokens: 180
+      max_completion_tokens: completionTokenBudget(input)
     })
   });
 
@@ -310,11 +311,11 @@ async function createCompatibleChatCompletion({ instructions, input, options }) 
   if (!apiResponse.ok) {
     const message =
       payload?.error?.message ||
-      `${providerPresets[options.provider]?.label || "Provider"} request failed while rewriting the sentence.`;
+      `${providerPresets[options.provider]?.label || "Provider"} request failed while rewriting the text.`;
     throw new Error(message);
   }
 
-  return cleanSentence(extractChatCompletionText(payload));
+  return cleanRewriteText(extractChatCompletionText(payload));
 }
 
 async function rewriteWithCodex(sentence, options = {}) {
@@ -352,8 +353,8 @@ async function rewriteWithCodex(sentence, options = {}) {
     }
 
     return {
-      improvedText: cleanSentence(payload.improvedText),
-      finalText: cleanSentence(payload.finalText)
+      improvedText: cleanRewriteText(payload.improvedText),
+      finalText: cleanRewriteText(payload.finalText)
     };
   } catch (error) {
     throw new Error(formatCodexError(error));
@@ -363,17 +364,31 @@ async function rewriteWithCodex(sentence, options = {}) {
 }
 
 function buildCodexPrompt(sentence, tone) {
+  const shape = describeDraftShape(sentence);
+  const structureInstruction = structureInstructionForShape(shape);
+  const toneInstruction = toneInstructionFor(tone);
+
   return [
     "You are Ghostline, a silent writing assistant.",
     "Return strict JSON that matches the provided schema.",
     "Do not use tools, commands, or file access.",
     "",
-    "Produce two fields:",
-    `1. improvedText: Rewrite the sentence so it reads cleaner, sharper, and more polished without changing the meaning, point of view, tone, or sentence count. Aim for a ${tone} voice.`,
-    `2. finalText: Starting from improvedText, make it sound more natural, warm, and human while keeping the original meaning intact. Aim for a ${tone} voice. Avoid cliches, corporate filler, em dashes, and obviously AI-sounding phrasing.`,
+    "Editing goals:",
+    "- Keep the writer's meaning, point of view, and register intact.",
+    "- Tighten clarity, rhythm, and transitions.",
+    "- Preserve specific language when it is already working.",
+    "- Do not add claims, facts, or examples.",
+    "- Avoid cliches, corporate filler, em dashes, and generic AI phrasing.",
+    "- If the draft is already formal or analytical, keep it formal rather than making it chatty.",
+    `- ${toneInstruction}`,
+    `- ${structureInstruction}`,
     "",
-    "Both fields must be exactly one sentence.",
-    `Sentence: ${sentence}`
+    "Produce two fields:",
+    "1. improvedText: Make the draft cleaner, sharper, and more polished while preserving meaning and structure.",
+    "2. finalText: Starting from improvedText, make the draft feel more natural and fluid without flattening its original voice or register.",
+    "",
+    "Return only the JSON object.",
+    `Draft:\n${sentence}`
   ].join("\n");
 }
 
@@ -440,20 +455,23 @@ function extractChatCompletionText(payload) {
   if (Array.isArray(content)) {
     const text = content
       .map((item) => (typeof item?.text === "string" ? item.text : ""))
-      .join(" ")
+      .join("")
       .trim();
     if (text) {
       return text;
     }
   }
 
-  throw new Error("The provider returned an empty sentence.");
+  throw new Error("The provider returned an empty rewrite.");
 }
 
-function cleanSentence(value) {
-  return value
-    .replace(/\s*\n+\s*/g, " ")
-    .replace(/\s{2,}/g, " ")
+function cleanRewriteText(value) {
+  return String(value)
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim().replace(/[ \t]{2,}/g, " "))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
     .replace(/^["'“”]+|["'“”]+$/g, "")
     .trim();
 }
@@ -497,12 +515,80 @@ function normalizeTone(value) {
   return tone || "natural";
 }
 
-function improveInstructionsForTone(tone) {
-  return `You are an invisible writing assistant. Rewrite the user's sentence so it reads cleaner, sharper, and more polished without changing the meaning, point of view, tone, or sentence count. Aim for a ${tone} voice. Return exactly one sentence and nothing else.`;
+function improveInstructionsForTone(tone, shape) {
+  return [
+    "You are an invisible writing assistant.",
+    "Rewrite the user's draft so it reads cleaner, sharper, and more polished.",
+    "Keep the writer's meaning, point of view, and register intact.",
+    "Tighten clarity, rhythm, and transitions.",
+    "Preserve specific language when it is already working.",
+    "Do not add claims, facts, or examples.",
+    "If the draft is already formal or analytical, keep that register instead of making it casual.",
+    toneInstructionFor(tone),
+    structureInstructionForShape(shape),
+    "Return only the revised draft."
+  ].join(" ");
 }
 
-function humanizeInstructionsForTone(tone) {
-  return `You are an AI humanizer. Make the sentence sound more natural, warm, and human while keeping the original meaning intact. Aim for a ${tone} voice. Avoid cliches, corporate filler, em dashes, and obviously AI-sounding phrasing. Return exactly one sentence and nothing else.`;
+function humanizeInstructionsForTone(tone, shape) {
+  return [
+    "You are an editorial writing assistant.",
+    "Make the draft feel more natural and fluid while keeping its original meaning, argument, and register intact.",
+    "Reduce stiffness, but do not flatten the writer's voice.",
+    "Keep strong phrases that are already working.",
+    "Avoid cliches, corporate filler, em dashes, and obviously AI-sounding phrasing.",
+    "Do not make formal writing sound overly casual or chatty.",
+    toneInstructionFor(tone),
+    structureInstructionForShape(shape),
+    "Return only the revised draft."
+  ].join(" ");
+}
+
+function toneInstructionFor(tone) {
+  switch (tone) {
+    case "clear":
+      return "Favor simpler syntax and cleaner transitions.";
+    case "confident":
+      return "Use confident phrasing without overselling or exaggerating.";
+    case "concise":
+      return "Trim needless words and prefer tighter phrasing.";
+    case "warm":
+      return "Keep the language warm and approachable without sounding sugary.";
+    case "formal":
+      return "Keep the register formal, analytical, and precise.";
+    default:
+      return "Sound natural and human without flattening the original voice.";
+  }
+}
+
+function describeDraftShape(text) {
+  const normalized = cleanRewriteText(text);
+  const paragraphCount = normalized ? normalized.split(/\n\s*\n/).filter(Boolean).length : 1;
+  const sentenceLikeCount = (normalized.match(/[.!?]+(?=\s|$)/g) || []).length;
+
+  return {
+    paragraphCount,
+    sentenceLikeCount,
+    isMultiParagraph: paragraphCount > 1,
+    isMultiSentence: paragraphCount > 1 || sentenceLikeCount > 1
+  };
+}
+
+function structureInstructionForShape(shape) {
+  if (shape.isMultiParagraph) {
+    return `Preserve the overall prose structure and keep roughly the same ${shape.paragraphCount}-paragraph shape. Do not turn it into bullets or headings.`;
+  }
+
+  if (shape.isMultiSentence) {
+    return "Keep it as a compact paragraph. Preserve the overall sentence flow unless a small merge or split clearly improves readability.";
+  }
+
+  return "Return exactly one sentence.";
+}
+
+function completionTokenBudget(input) {
+  const approxTokens = Math.ceil(normalizeValue(input).length / 4);
+  return Math.min(900, Math.max(220, approxTokens + 160));
 }
 
 async function serveStatic(request, response) {

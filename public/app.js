@@ -23,6 +23,10 @@ const codexLoginButton = document.querySelector("#codexLoginButton");
 const refreshConnectionButton = document.querySelector("#refreshConnectionButton");
 const providerModeLabel = document.querySelector("#providerModeLabel");
 const providerHint = document.querySelector("#providerHint");
+const bridgeSourceLabel = document.querySelector("#bridgeSourceLabel");
+const bridgePreview = document.querySelector("#bridgePreview");
+const copyCodexBridgeButton = document.querySelector("#copyCodexBridgeButton");
+const copyHumanizerBridgeButton = document.querySelector("#copyHumanizerBridgeButton");
 const apiFieldNodes = Array.from(document.querySelectorAll(".api-field"));
 const rewritePastedButton = document.querySelector("#rewritePastedButton");
 const clearPasteButton = document.querySelector("#clearPasteButton");
@@ -169,6 +173,7 @@ renderModelSuggestions();
 renderProviderMatrix();
 updatePermissionUI();
 updateConnectionUI();
+renderBridgeUI();
 updateStatus();
 sendPreferences();
 
@@ -204,6 +209,7 @@ providerSelect.addEventListener("change", () => {
 pasteInput.addEventListener("input", () => {
   settings.pasteInput = pasteInput.value;
   localStorage.setItem("ghostline_pasteInput", settings.pasteInput);
+  renderBridgeUI();
 });
 
 toneChips.forEach((chip) => {
@@ -239,6 +245,7 @@ clearPasteButton.addEventListener("click", () => {
   pasteInput.value = "";
   settings.pasteInput = "";
   localStorage.setItem("ghostline_pasteInput", "");
+  renderBridgeUI();
   showToast("Paste lab cleared.");
 });
 
@@ -250,6 +257,28 @@ copyLastRewriteButton.addEventListener("click", async () => {
 
   await copyText(lastRewriteSnapshot.rewritten);
   showToast("Copied latest rewrite.");
+});
+
+copyCodexBridgeButton.addEventListener("click", async () => {
+  const prompt = buildCodexHandoffPrompt();
+  if (!prompt) {
+    showToast("Add a draft first.");
+    return;
+  }
+
+  await copyText(prompt);
+  showToast("Copied Codex handoff.");
+});
+
+copyHumanizerBridgeButton.addEventListener("click", async () => {
+  const prompt = buildHumanizerHandoffPrompt();
+  if (!prompt) {
+    showToast("Add a draft first.");
+    return;
+  }
+
+  await copyText(prompt);
+  showToast("Copied humanizer handoff.");
 });
 
 requestAllPermissionsButton.addEventListener("click", () => {
@@ -312,6 +341,7 @@ function handleGhostlineContext(payload) {
   srStatus.textContent = context.status || "Ready for a sentence.";
   updatePermissionUI();
   updateConnectionUI();
+  renderBridgeUI();
   updateStatus();
 }
 
@@ -476,6 +506,8 @@ function updateStatus(forcedState = "") {
   rewriteIndicator.className = `status-dot ${forcedState === "Error" ? "error" : isRewriting ? "polishing" : "live"}`;
   modelFamilyLabel.textContent = providerPresets[settings.provider]?.family || "Provider";
   copyLastRewriteButton.disabled = !lastRewriteSnapshot?.rewritten;
+  copyCodexBridgeButton.disabled = !resolveBridgeDraft();
+  copyHumanizerBridgeButton.disabled = !resolveBridgeDraft();
   rewriteFocusButton.disabled = isRewriting || !currentFocusSentence || !permissionState.accessibility;
   rewritePastedButton.disabled = isRewriting;
 }
@@ -587,6 +619,137 @@ function commitRewriteSnapshot(snapshot) {
   latestOriginal.textContent = snapshot.original || "No rewrite yet.";
   latestRewritten.textContent =
     snapshot.rewritten || "Your last rewrite will appear here after Ghostline updates the sentence in place.";
+  renderBridgeUI();
+}
+
+function renderBridgeUI() {
+  const bridgeDraft = resolveBridgeDraft();
+  const hasDraft = Boolean(bridgeDraft);
+  copyCodexBridgeButton.disabled = !hasDraft;
+  copyHumanizerBridgeButton.disabled = !hasDraft;
+
+  if (!hasDraft) {
+    bridgeSourceLabel.textContent = "No Draft";
+    bridgePreview.textContent =
+      "Paste text into the lab or focus a sentence in another app to prepare a bridge prompt.";
+    bridgePreview.classList.add("empty");
+    return;
+  }
+
+  bridgeSourceLabel.textContent = bridgeDraft.sourceLabel;
+  bridgePreview.textContent = ellipsizeText(bridgeDraft.text, 360);
+  bridgePreview.classList.remove("empty");
+}
+
+function resolveBridgeDraft() {
+  const pastedDraft = pasteInput.value.trim();
+  if (pastedDraft) {
+    return { text: pastedDraft, sourceLabel: "Paste Lab" };
+  }
+
+  const focusedDraft = currentFocusSentence.trim();
+  if (focusedDraft) {
+    return { text: focusedDraft, sourceLabel: "Focused Sentence" };
+  }
+
+  const previousDraft = lastRewriteSnapshot?.original?.trim();
+  if (previousDraft) {
+    return { text: previousDraft, sourceLabel: "Last Rewrite" };
+  }
+
+  return null;
+}
+
+function buildCodexHandoffPrompt() {
+  const context = buildBridgeContext();
+  if (!context) {
+    return "";
+  }
+
+  return [
+    "You are picking up a writing pass that started in Ghostline.",
+    "Keep the writer's meaning, perspective, register, and structure intact while improving the draft at the paragraph level.",
+    "",
+    "Please do the following:",
+    "- tighten clarity, rhythm, and transitions",
+    "- preserve specific language when it is already working",
+    "- do not add facts, examples, or new sections",
+    "- keep formal writing formal instead of making it chatty",
+    "- call out only the most meaningful changes",
+    "",
+    "Current draft:",
+    "<draft>",
+    context.draft,
+    "</draft>",
+    context.rewrite
+      ? [
+          "",
+          "Ghostline's latest rewrite:",
+          "<ghostline_rewrite>",
+          context.rewrite,
+          "</ghostline_rewrite>"
+        ].join("\n")
+      : "",
+    "",
+    "Return:",
+    "1. A revised version of the draft.",
+    "2. Three short notes on the most important edits."
+  ].filter(Boolean).join("\n");
+}
+
+function buildHumanizerHandoffPrompt() {
+  const context = buildBridgeContext();
+  if (!context) {
+    return "";
+  }
+
+  return [
+    "You are a writing humanizer picking up a draft from Ghostline.",
+    "Make the writing feel more natural and human without changing the writer's meaning, stance, or level of formality.",
+    "",
+    "Please do the following:",
+    "- reduce stiffness and AI-sounding phrasing",
+    "- preserve the original argument, point of view, and paragraph shape",
+    "- keep domain-specific or distinctive wording that is already working",
+    "- do not add hype, extra claims, or filler",
+    "- avoid turning analytical writing into casual marketing copy",
+    "",
+    "Current draft:",
+    "<draft>",
+    context.draft,
+    "</draft>",
+    context.rewrite
+      ? [
+          "",
+          "Ghostline's latest rewrite for reference:",
+          "<ghostline_rewrite>",
+          context.rewrite,
+          "</ghostline_rewrite>"
+        ].join("\n")
+      : "",
+    "",
+    "Return only the revised draft."
+  ].filter(Boolean).join("\n");
+}
+
+function buildBridgeContext() {
+  const bridgeDraft = resolveBridgeDraft();
+  if (!bridgeDraft) {
+    return null;
+  }
+
+  return {
+    draft: bridgeDraft.text,
+    rewrite: lastRewriteSnapshot?.rewritten?.trim() || ""
+  };
+}
+
+function ellipsizeText(value, maxLength) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
 function persistSettings() {

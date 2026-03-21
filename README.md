@@ -8,6 +8,7 @@ Ghostline is a quiet writing companion for macOS. It sits beside your current ed
 - Uses local Codex by default, with OpenAI, Claude, Gemini, Ollama, and compatible providers available in the app UI.
 - Lets you keep the webpage-based control surface while shipping as a real macOS application.
 - Supports manual rewrite with `Control` + `Option` + `G` and optional YOLO auto-rewrite after a short pause.
+- Includes copy-based bridge prompts for Codex and external humanizer tools when you want to hand a draft off instead of rewriting in place.
 
 ## Install It Like a Normal Mac App
 

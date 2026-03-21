@@ -119,6 +119,7 @@
               <button class="tone-chip" type="button" data-tone="clear">Clear</button>
               <button class="tone-chip" type="button" data-tone="confident">Confident</button>
               <button class="tone-chip" type="button" data-tone="concise">Concise</button>
+              <button class="tone-chip" type="button" data-tone="formal">Formal</button>
               <button class="tone-chip" type="button" data-tone="warm">Warm</button>
             </div>
 
@@ -178,6 +179,36 @@
             </div>
           </section>
 
+          <section class="card bridge-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Bridge</p>
+                <h2>Send the draft to Codex or a humanizer</h2>
+              </div>
+              <span class="micro-badge" id="bridgeSourceLabel">No Draft</span>
+            </div>
+
+            <p class="assist-copy">
+              Copy a handoff prompt for an external editor. Ghostline uses the pasted draft first, then the focused sentence if the paste lab is empty.
+            </p>
+
+            <div class="bridge-preview">
+              <p class="bridge-kicker">Current handoff draft</p>
+              <p id="bridgePreview" class="bridge-preview-text empty">
+                Paste text into the lab or focus a sentence in another app to prepare a bridge prompt.
+              </p>
+            </div>
+
+            <div class="action-row action-row-tight">
+              <button class="secondary-button" id="copyCodexBridgeButton" type="button">
+                Copy Codex Handoff
+              </button>
+              <button class="ghost-button" id="copyHumanizerBridgeButton" type="button">
+                Copy Humanizer Handoff
+              </button>
+            </div>
+          </section>
+
           <section class="card settings-card">
             <div class="card-head">
               <div>
@@ -214,6 +245,7 @@
                     <option value="clear">Clear</option>
                     <option value="confident">Confident</option>
                     <option value="concise">Concise</option>
+                    <option value="formal">Formal</option>
                     <option value="warm">Warm</option>
                   </select>
                 </label>

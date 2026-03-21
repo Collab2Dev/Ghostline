@@ -277,6 +277,13 @@ h2 {
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 251, 249, 0.76));
 }
 
+.bridge-card {
+  background:
+    radial-gradient(circle at 0% 100%, rgba(201, 121, 36, 0.08), transparent 24%),
+    radial-gradient(circle at 100% 0%, rgba(38, 124, 255, 0.08), transparent 22%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(249, 252, 249, 0.78));
+}
+
 .settings-card {
   background:
     radial-gradient(circle at 100% 100%, rgba(38, 124, 255, 0.08), transparent 22%),
@@ -616,6 +623,33 @@ input[type="url"]:focus {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 14px;
+}
+
+.bridge-preview {
+  margin-top: 4px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(247, 250, 247, 0.88);
+  border: 1px solid rgba(23, 38, 29, 0.06);
+}
+
+.bridge-kicker {
+  margin: 0 0 10px;
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.bridge-preview-text {
+  margin: 0;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.bridge-preview-text.empty {
+  color: var(--ink-soft);
 }
 
 .settings-list {

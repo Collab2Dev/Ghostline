@@ -173,6 +173,7 @@ renderModelSuggestions();
 renderProviderMatrix();
 updatePermissionUI();
 updateConnectionUI();
+renderRewritePanels();
 renderBridgeUI();
 updateStatus();
 sendPreferences();
@@ -616,10 +617,24 @@ function syncToneUI(tone) {
 
 function commitRewriteSnapshot(snapshot) {
   lastRewriteSnapshot = snapshot;
-  latestOriginal.textContent = snapshot.original || "No rewrite yet.";
-  latestRewritten.textContent =
-    snapshot.rewritten || "Your last rewrite will appear here after Ghostline updates the sentence in place.";
+  renderRewritePanels();
   renderBridgeUI();
+}
+
+function renderRewritePanels() {
+  setRewritePanel(latestOriginal, lastRewriteSnapshot?.original, "No rewrite yet.");
+  setRewritePanel(
+    latestRewritten,
+    lastRewriteSnapshot?.rewritten,
+    "Your last rewrite will appear here after Ghostline updates the sentence in place."
+  );
+}
+
+function setRewritePanel(node, text, fallback) {
+  const value = text?.trim();
+  node.textContent = value || fallback;
+  node.classList.toggle("is-empty", !value);
+  node.closest(".compare-block")?.classList.toggle("is-empty", !value);
 }
 
 function renderBridgeUI() {

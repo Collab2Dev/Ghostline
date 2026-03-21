@@ -146,6 +146,10 @@ let authState = {
   codexLoggedIn: false,
   codexStatus: "Checking Codex..."
 };
+let isRequestingPermissions = false;
+let isYoloModeEnabled = false;
+let permissionRequestResetTimer = 0;
+let copyLatestRewriteResetTimer = 0;
 
 const settings = {
   provider: normalizeProviderKey(localStorage.getItem("ghostline_provider") || "codex"),
@@ -157,6 +161,7 @@ const settings = {
   yoloMode: localStorage.getItem("ghostline_yolo") === "true",
   pasteInput: localStorage.getItem("ghostline_pasteInput") || ""
 };
+isYoloModeEnabled = settings.yoloMode;
 
 providerSelect.value = settings.provider;
 customModelInput.value = settings.customModel;
@@ -164,7 +169,7 @@ apiKeyInput.value = settings.apiKey;
 endpointInput.value = settings.endpoint;
 toneSelect.value = settings.tone;
 displayModeSelect.value = settings.displayMode;
-yoloModeInput.checked = settings.yoloMode;
+yoloModeInput.checked = isYoloModeEnabled;
 pasteInput.value = settings.pasteInput;
 
 syncToneUI(settings.tone);
@@ -185,7 +190,7 @@ settingsForm.addEventListener("input", () => {
   settings.endpoint = endpointInput.value.trim();
   settings.tone = toneSelect.value;
   settings.displayMode = displayModeSelect.value;
-  settings.yoloMode = yoloModeInput.checked;
+  settings.yoloMode = isYoloModeEnabled;
 
   persistSettings();
   applyProviderPreset(settings.provider, { preserveCustomEndpoint: true });
@@ -194,6 +199,10 @@ settingsForm.addEventListener("input", () => {
   updateConnectionUI();
   updateStatus();
   sendPreferences();
+});
+
+yoloModeInput.addEventListener("change", () => {
+  handleYoloModeToggle();
 });
 
 providerSelect.addEventListener("change", () => {
@@ -225,17 +234,7 @@ toneChips.forEach((chip) => {
 });
 
 rewriteFocusButton.addEventListener("click", () => {
-  if (!postToGhostline({
-    action: "rewriteFocused",
-    options: buildRewriteOptions()
-  })) {
-    showToast("Focused rewriting is only available inside the macOS app.");
-    return;
-  }
-
-  isRewriting = true;
-  srStatus.textContent = "Rewriting focused sentence.";
-  updateStatus();
+  void handleRewrite();
 });
 
 rewritePastedButton.addEventListener("click", () => {
@@ -250,14 +249,8 @@ clearPasteButton.addEventListener("click", () => {
   showToast("Paste lab cleared.");
 });
 
-copyLastRewriteButton.addEventListener("click", async () => {
-  if (!lastRewriteSnapshot?.rewritten) {
-    showToast("No rewrite to copy yet.");
-    return;
-  }
-
-  await copyText(lastRewriteSnapshot.rewritten);
-  showToast("Copied latest rewrite.");
+copyLastRewriteButton.addEventListener("click", () => {
+  void copyToClipboard();
 });
 
 copyCodexBridgeButton.addEventListener("click", async () => {
@@ -283,12 +276,7 @@ copyHumanizerBridgeButton.addEventListener("click", async () => {
 });
 
 requestAllPermissionsButton.addEventListener("click", () => {
-  if (!postToGhostline({ action: "requestPermissions" })) {
-    showToast("Permission requests are only available inside the macOS app.");
-    return;
-  }
-
-  showToast("Ghostline is requesting macOS permissions.");
+  void handleRequestAllPermissions();
 });
 
 requestAccessibilityButton.addEventListener("click", () => requestPermission("accessibility"));
@@ -453,6 +441,121 @@ async function requestHttpRewrite(sentence) {
   return payload;
 }
 
+async function handleRequestAllPermissions() {
+  if (isRequestingPermissions) {
+    return;
+  }
+
+  isRequestingPermissions = true;
+  updateRequestAllPermissionsButtonState();
+
+  try {
+    await requestPermissions();
+    showToast("Ghostline is requesting macOS permissions.");
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "Permission request failed.");
+  } finally {
+    window.clearTimeout(permissionRequestResetTimer);
+    permissionRequestResetTimer = window.setTimeout(() => {
+      isRequestingPermissions = false;
+      updateRequestAllPermissionsButtonState();
+    }, 1200);
+  }
+}
+
+async function requestPermissions() {
+  // TODO: Replace this bridge call with richer native/backend permission orchestration.
+  const didPost = postToGhostline({ action: "requestPermissions" });
+  if (!didPost) {
+    throw new Error("Permission requests are only available inside the macOS app.");
+  }
+}
+
+async function handleRewrite() {
+  const focusedText = getFocusedSentenceText();
+  if (!focusedText) {
+    showToast("Focus a sentence first.");
+    return;
+  }
+
+  isRewriting = true;
+  srStatus.textContent = "Rewriting focused sentence.";
+  updateStatus();
+
+  try {
+    const payload = await performRewriteRequest(focusedText);
+    if (!payload) {
+      return;
+    }
+
+    commitRewriteSnapshot({
+      original: focusedText,
+      rewritten: payload.finalText || "",
+      provider: normalizeProviderKey(payload.provider || settings.provider)
+    });
+    srStatus.textContent = `Rewritten with ${labelForProviderKey(lastRewriteSnapshot.provider)}.`;
+    isRewriting = false;
+    updateStatus();
+    showToast("Rewrite complete.");
+  } catch (error) {
+    isRewriting = false;
+    srStatus.textContent = "Rewrite failed.";
+    updateStatus("Error");
+    showToast(error instanceof Error ? error.message : "Rewrite failed.");
+  }
+}
+
+async function performRewriteRequest(focusedText) {
+  // TODO: Move this into a dedicated backend/native rewrite endpoint if you want one unified flow.
+  if (window.webkit?.messageHandlers?.ghostline) {
+    window.webkit.messageHandlers.ghostline.postMessage({
+      action: "rewriteFocused",
+      options: buildRewriteOptions()
+    });
+    return null;
+  }
+
+  return requestHttpRewrite(focusedText);
+}
+
+function getFocusedSentenceText() {
+  if (currentFocusSentence.trim()) {
+    return currentFocusSentence.trim();
+  }
+
+  if (codexFocus.classList.contains("empty")) {
+    return "";
+  }
+
+  return codexFocus.textContent.trim();
+}
+
+async function copyToClipboard() {
+  const rewriteText = latestRewritten.classList.contains("is-empty")
+    ? ""
+    : latestRewritten.textContent.trim();
+
+  if (!rewriteText) {
+    showToast("No rewrite to copy yet.");
+    return;
+  }
+
+  await copyText(rewriteText);
+  copyLastRewriteButton.textContent = "Copied!";
+  window.clearTimeout(copyLatestRewriteResetTimer);
+  copyLatestRewriteResetTimer = window.setTimeout(() => {
+    copyLastRewriteButton.textContent = "Copy Latest Rewrite";
+  }, 2000);
+}
+
+function handleYoloModeToggle() {
+  isYoloModeEnabled = yoloModeInput.checked;
+  settings.yoloMode = isYoloModeEnabled;
+  persistSettings();
+  updateStatus();
+  sendPreferences();
+}
+
 function buildRewriteOptions() {
   const preset = providerPresets[settings.provider] || providerPresets.custom;
   return {
@@ -521,16 +624,26 @@ function updatePermissionUI() {
   const allGranted =
     permissionState.accessibility && permissionState.automation && permissionState.screenRecording;
 
-  requestAllPermissionsButton.disabled = allGranted;
+  requestAllPermissionsButton.disabled = allGranted || isRequestingPermissions;
   permissionSummary.textContent = allGranted
     ? "All three permissions are active. Ghostline can stay beside your writing like a proper desktop utility."
     : "Grant Accessibility first, then finish Automation and Screen Recording so the Mac app can behave like a full native companion.";
+  updateRequestAllPermissionsButtonState();
 }
 
 function updatePermissionTile(button, statusNode, granted) {
   statusNode.textContent = granted ? "Granted" : "Needed";
   button.classList.toggle("is-granted", granted);
   button.setAttribute("aria-pressed", String(granted));
+}
+
+function updateRequestAllPermissionsButtonState() {
+  const allGranted =
+    permissionState.accessibility && permissionState.automation && permissionState.screenRecording;
+  requestAllPermissionsButton.textContent = isRequestingPermissions
+    ? "Requesting..."
+    : "Request All Permissions";
+  requestAllPermissionsButton.disabled = allGranted || isRequestingPermissions;
 }
 
 function updateConnectionUI() {
